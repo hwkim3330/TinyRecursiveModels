@@ -39,7 +39,6 @@
             -webkit-text-fill-color: transparent;
         }
 
-        /* Heatmap Canvas */
         .heatmap-container {
             position: relative;
             border-radius: 8px;
@@ -49,9 +48,9 @@
         .heatmap-canvas {
             display: block;
             border-radius: 8px;
+            background: rgba(0,0,0,0.3);
         }
 
-        /* Sudoku Grid */
         .sudoku-grid {
             display: grid;
             grid-template-columns: repeat(9, 1fr);
@@ -168,39 +167,19 @@
             to { transform: rotate(360deg); }
         }
 
-        .step-indicator {
-            display: flex;
+        .cycle-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
             gap: 0.5rem;
-            align-items: center;
-            padding: 0.5rem 1rem;
-            background: rgba(255,255,255,0.05);
-            border-radius: 9999px;
+            padding: 1rem;
+            background: rgba(0,0,0,0.2);
+            border-radius: 0.5rem;
             font-size: 0.875rem;
         }
 
-        .step-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.2);
-        }
-
-        .step-dot.active {
-            background: var(--primary);
-            box-shadow: 0 0 10px var(--primary);
-        }
-
-        .step-dot.done {
-            background: #10b981;
-        }
-
-        .activation-label {
-            position: absolute;
-            bottom: 100%;
-            left: 0;
-            font-size: 0.75rem;
-            color: #9ca3af;
-            margin-bottom: 0.25rem;
+        .cycle-info-item {
+            display: flex;
+            justify-content: space-between;
         }
 
         .colorbar {
@@ -216,19 +195,10 @@
             );
         }
 
-        .cycle-info {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 0.5rem;
-            padding: 1rem;
-            background: rgba(0,0,0,0.2);
-            border-radius: 0.5rem;
-            font-size: 0.875rem;
-        }
-
-        .cycle-info-item {
-            display: flex;
-            justify-content: space-between;
+        .activation-label {
+            font-size: 0.75rem;
+            color: #9ca3af;
+            margin-bottom: 0.5rem;
         }
     </style>
 </head>
@@ -236,7 +206,7 @@
     <!-- Loading Overlay -->
     <div id="loading" class="loading-overlay">
         <div class="spinner"></div>
-        <div>Loading WASM TRM Model...</div>
+        <div>Initializing TRM Model...</div>
     </div>
 
     <!-- Header -->
@@ -245,7 +215,7 @@
             <div style="display: flex; align-items: center; gap: 0.75rem;">
                 <div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--secondary)); display: flex; align-items: center; justify-content: center; font-weight: 700;">T</div>
                 <span style="font-size: 1.25rem; font-weight: 700;" class="gradient-text">TRM Live</span>
-                <span style="font-size: 0.75rem; padding: 0.25rem 0.5rem; background: rgba(16, 185, 129, 0.2); color: #10b981; border-radius: 9999px;">WASM</span>
+                <span style="font-size: 0.75rem; padding: 0.25rem 0.5rem; background: rgba(16, 185, 129, 0.2); color: #10b981; border-radius: 9999px;">JS</span>
             </div>
             <div style="display: flex; gap: 1rem; align-items: center;">
                 <a href="index.html" class="btn btn-secondary" style="font-size: 0.875rem;">Demo</a>
@@ -392,22 +362,12 @@ for h in H_cycles:           # Update answer K times
         </div>
     </main>
 
-    <script type="module">
-        import init, {
-            TRM,
-            TRMConfig,
-            create_sudoku_input,
-            decode_sudoku_output,
-            normalize_activations,
-            validate_sudoku,
-            compute_attention_heatmap
-        } from './wasm/wasm_trm.js';
-
+    <script src="js/trm-real.js"></script>
+    <script>
         let trm = null;
         let currentPuzzle = null;
         let originalPuzzle = null;
         let isRunning = false;
-        let stepHistory = [];
 
         // Sample Sudoku puzzles (0 = empty)
         const puzzles = [
@@ -447,34 +407,29 @@ for h in H_cycles:           # Update answer K times
         ];
 
         // Initialize
-        async function initialize() {
+        function initialize() {
             try {
-                await init();
-                console.log('WASM TRM initialized!');
+                console.log('Initializing TRM...');
 
-                // Create model
-                const config = TRMConfig.for_sudoku();
+                const config = TRMConfig.forSudoku();
                 trm = new TRM(config);
 
-                // Update UI
-                document.getElementById('cfg-hidden').textContent = '128';
-                document.getElementById('cfg-h').textContent = '3';
-                document.getElementById('cfg-l').textContent = '6';
-                document.getElementById('cfg-layers').textContent = '2';
-                document.getElementById('total-steps').textContent = '18'; // 3 * 6
+                document.getElementById('cfg-hidden').textContent = config.hiddenSize;
+                document.getElementById('cfg-h').textContent = config.hCycles;
+                document.getElementById('cfg-l').textContent = config.lCycles;
+                document.getElementById('cfg-layers').textContent = config.lLayers;
+                document.getElementById('total-steps').textContent = config.hCycles * config.lCycles;
 
-                // Load initial puzzle
                 newPuzzle();
-
-                // Hide loading
                 document.getElementById('loading').style.display = 'none';
 
+                console.log('TRM initialized successfully!');
             } catch (e) {
                 console.error('Failed to initialize:', e);
                 document.getElementById('loading').innerHTML = `
                     <div style="color: #ef4444; text-align: center;">
                         <div style="font-size: 2rem; margin-bottom: 1rem;">Error</div>
-                        <div>Failed to load WASM module</div>
+                        <div>Failed to initialize TRM</div>
                         <div style="font-size: 0.875rem; color: #9ca3af; margin-top: 0.5rem;">${e.message}</div>
                     </div>
                 `;
@@ -482,7 +437,7 @@ for h in H_cycles:           # Update answer K times
         }
 
         // Render Sudoku grid
-        window.renderGrid = function(puzzle, solved = null) {
+        function renderGrid(puzzle, solved = null) {
             const grid = document.getElementById('sudoku-grid');
             grid.innerHTML = '';
 
@@ -504,14 +459,13 @@ for h in H_cycles:           # Update answer K times
 
                 grid.appendChild(cell);
             }
-        };
+        }
 
         // New puzzle
         window.newPuzzle = function() {
             const idx = Math.floor(Math.random() * puzzles.length);
             currentPuzzle = [...puzzles[idx]];
             originalPuzzle = [...puzzles[idx]];
-            stepHistory = [];
             renderGrid(currentPuzzle);
             clearVisualizations();
         };
@@ -520,7 +474,6 @@ for h in H_cycles:           # Update answer K times
         window.resetPuzzle = function() {
             if (originalPuzzle) {
                 currentPuzzle = [...originalPuzzle];
-                stepHistory = [];
                 renderGrid(currentPuzzle);
                 clearVisualizations();
             }
@@ -536,7 +489,6 @@ for h in H_cycles:           # Update answer K times
             document.getElementById('step-visualization').innerHTML = '';
             document.getElementById('output-evolution').innerHTML = '';
 
-            // Clear canvases
             const zhCanvas = document.getElementById('canvas-zh');
             const zlCanvas = document.getElementById('canvas-zl');
             zhCanvas.getContext('2d').clearRect(0, 0, zhCanvas.width, zhCanvas.height);
@@ -549,14 +501,15 @@ for h in H_cycles:           # Update answer K times
             const width = canvas.width;
             const height = canvas.height;
 
+            ctx.clearRect(0, 0, width, height);
+
             const cellWidth = width / cols;
             const cellHeight = height / rows;
 
-            // Normalize data
-            const normalized = normalize_activations(new Float32Array(data));
+            const normalized = normalizeActivations(data);
 
             for (let i = 0; i < rows; i++) {
-                for (let j = 0; j < Math.min(cols, data.length / rows); j++) {
+                for (let j = 0; j < Math.min(cols, Math.floor(data.length / rows)); j++) {
                     const idx = i * Math.floor(data.length / rows) + j;
                     if (idx < normalized.length) {
                         const val = normalized[idx];
@@ -569,25 +522,19 @@ for h in H_cycles:           # Update answer K times
 
         // Heatmap color
         function getHeatmapColor(val) {
-            // val is 0-255
             const t = val / 255;
-
-            // Purple -> Orange -> White
             let r, g, b;
             if (t < 0.5) {
-                // Purple to Orange
                 const t2 = t * 2;
                 r = Math.floor(61 + (245 - 61) * t2);
                 g = Math.floor(28 + (158 - 28) * t2);
                 b = Math.floor(115 + (11 - 115) * t2);
             } else {
-                // Orange to White
                 const t2 = (t - 0.5) * 2;
                 r = Math.floor(245 + (255 - 245) * t2);
                 g = Math.floor(158 + (255 - 158) * t2);
                 b = Math.floor(11 + (255 - 11) * t2);
             }
-
             return `rgb(${r},${g},${b})`;
         }
 
@@ -607,24 +554,20 @@ for h in H_cycles:           # Update answer K times
 
                 const endTime = performance.now();
 
-                // Update UI
                 renderGrid(originalPuzzle, Array.from(output));
 
                 document.getElementById('progress-bar').style.width = '100%';
-                document.getElementById('current-step').textContent = '18';
+                document.getElementById('current-step').textContent = trm.config.hCycles * trm.config.lCycles;
                 document.getElementById('step-time').textContent = `${Math.round(endTime - startTime)}ms`;
                 document.getElementById('confidence-bar').style.width = '100%';
                 document.getElementById('confidence-val').textContent = '100%';
 
-                // Draw final activations
-                const zH = trm.get_z_h();
-                const zL = trm.get_z_l();
+                const zH = trm.getZH();
+                const zL = trm.getZL();
                 drawHeatmap(document.getElementById('canvas-zh'), Array.from(zH), 81, 128);
                 drawHeatmap(document.getElementById('canvas-zl'), Array.from(zL), 81, 128);
 
-                // Validate
-                const isValid = validate_sudoku(output);
-                console.log('Solution valid:', isValid);
+                console.log('Inference complete in', Math.round(endTime - startTime), 'ms');
 
             } catch (e) {
                 console.error('Inference error:', e);
@@ -647,17 +590,15 @@ for h in H_cycles:           # Update answer K times
             trm.reset();
             const input = new Uint8Array(currentPuzzle);
 
-            stepHistory = [];
             const stepViz = document.getElementById('step-visualization');
             const outputEvolution = document.getElementById('output-evolution');
 
-            const H_CYCLES = 3;
-            const L_CYCLES = 6;
+            const H_CYCLES = trm.config.hCycles;
+            const L_CYCLES = trm.config.lCycles;
             const totalSteps = H_CYCLES * L_CYCLES;
             let stepCount = 0;
 
             for (let h = 0; h < H_CYCLES; h++) {
-                // Create H-cycle container
                 const hContainer = document.createElement('div');
                 hContainer.style.cssText = 'background: rgba(255,255,255,0.03); border-radius: 0.5rem; padding: 0.75rem; min-width: 200px;';
                 hContainer.innerHTML = `
@@ -677,7 +618,6 @@ for h in H_cycles:           # Update answer K times
 
                     const endTime = performance.now();
 
-                    // Update progress
                     document.getElementById('current-step').textContent = stepCount;
                     document.getElementById('progress-bar').style.width = `${(stepCount / totalSteps) * 100}%`;
                     document.getElementById('step-time').textContent = `${Math.round(endTime - startTime)}ms`;
@@ -686,7 +626,6 @@ for h in H_cycles:           # Update answer K times
                     document.getElementById('confidence-val').textContent = `${confidence}%`;
                     document.getElementById('confidence-bar').style.width = `${confidence}%`;
 
-                    // Add L-step indicator
                     const lStep = document.createElement('div');
                     lStep.style.cssText = 'display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem;';
                     lStep.innerHTML = `
@@ -696,30 +635,19 @@ for h in H_cycles:           # Update answer K times
                     `;
                     hCycleDiv.appendChild(lStep);
 
-                    // Draw activations
-                    const zH = trm.get_z_h();
-                    const zL = trm.get_z_l();
+                    const zH = trm.getZH();
+                    const zL = trm.getZL();
                     drawHeatmap(document.getElementById('canvas-zh'), Array.from(zH), 81, 128);
                     drawHeatmap(document.getElementById('canvas-zl'), Array.from(zL), 81, 128);
 
-                    // Store history
-                    stepHistory.push({
-                        h, l,
-                        zH: Array.from(zH.slice(0, 64)),
-                        zL: Array.from(zL.slice(0, 64)),
-                        confidence: stepInfo.confidence
-                    });
-
-                    // Delay for visualization
-                    await new Promise(r => setTimeout(r, 50));
-
-                    stepInfo.free();
+                    await new Promise(r => setTimeout(r, 30));
                 }
 
-                // Get current output after H-cycle
-                const currentOutput = trm.get_current_output();
+                // H-cycle update
+                trm.hCycleStep();
 
-                // Add output snapshot
+                const currentOutput = trm.getCurrentOutput();
+
                 const outputSnap = document.createElement('div');
                 outputSnap.style.cssText = 'background: rgba(255,255,255,0.03); border-radius: 0.5rem; padding: 0.75rem; min-width: 120px;';
                 outputSnap.innerHTML = `
@@ -737,8 +665,13 @@ for h in H_cycles:           # Update answer K times
                 `;
                 outputEvolution.appendChild(outputSnap);
 
-                // Update main grid
                 renderGrid(originalPuzzle, Array.from(currentOutput));
+
+                // Update heatmaps after H-cycle
+                const zH = trm.getZH();
+                const zL = trm.getZL();
+                drawHeatmap(document.getElementById('canvas-zh'), Array.from(zH), 81, 128);
+                drawHeatmap(document.getElementById('canvas-zl'), Array.from(zL), 81, 128);
             }
 
             isRunning = false;
@@ -747,7 +680,7 @@ for h in H_cycles:           # Update answer K times
         };
 
         // Start
-        initialize();
+        document.addEventListener('DOMContentLoaded', initialize);
     </script>
 </body>
 </html>
