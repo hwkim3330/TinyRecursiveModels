@@ -243,7 +243,16 @@
 
                 <div id="sudoku-grid" class="sudoku-grid" style="margin: 0 auto;"></div>
 
-                <div style="margin-top: 1.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <div style="margin-top: 1rem;">
+                    <div style="font-size: 0.75rem; color: #6b7280; margin-bottom: 0.5rem;">Difficulty</div>
+                    <div style="display: flex; gap: 0.25rem;">
+                        <button onclick="setDifficulty('easy')" id="diff-easy" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Easy</button>
+                        <button onclick="setDifficulty('hard')" id="diff-hard" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Hard</button>
+                        <button onclick="setDifficulty('extreme')" id="diff-extreme" class="btn btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Extreme</button>
+                    </div>
+                </div>
+
+                <div style="margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
                     <button id="btn-solve" onclick="runInference()" class="btn btn-primary">
                         Run TRM
                     </button>
@@ -369,8 +378,11 @@ for h in H_cycles:           # Update answer K times
         let originalPuzzle = null;
         let isRunning = false;
 
-        // Sample Sudoku puzzles (0 = empty)
-        const puzzles = [
+        // Difficulty levels
+        let currentDifficulty = 'extreme';
+
+        // Easy puzzles (30+ given)
+        const easyPuzzles = [
             [
                 5,3,0,0,7,0,0,0,0,
                 6,0,0,1,9,5,0,0,0,
@@ -381,7 +393,11 @@ for h in H_cycles:           # Update answer K times
                 0,6,0,0,0,0,2,8,0,
                 0,0,0,4,1,9,0,0,5,
                 0,0,0,0,8,0,0,7,9
-            ],
+            ]
+        ];
+
+        // Hard puzzles (22-26 given)
+        const hardPuzzles = [
             [
                 0,0,0,2,6,0,7,0,1,
                 6,8,0,0,7,0,0,9,0,
@@ -392,19 +408,99 @@ for h in H_cycles:           # Update answer K times
                 0,0,9,3,0,0,0,7,4,
                 0,4,0,0,5,0,0,3,6,
                 7,0,3,0,1,8,0,0,0
-            ],
-            [
-                0,2,0,6,0,8,0,0,0,
-                5,8,0,0,0,9,7,0,0,
-                0,0,0,0,4,0,0,0,0,
-                3,7,0,0,0,0,5,0,0,
-                6,0,0,0,0,0,0,0,4,
-                0,0,8,0,0,0,0,1,3,
-                0,0,0,0,2,0,0,0,0,
-                0,0,9,8,0,0,0,3,6,
-                0,0,0,3,0,6,0,9,0
             ]
         ];
+
+        // Extreme puzzles (17-21 given) - "Sudoku-Extreme" from paper
+        const extremePuzzles = [
+            // AI Escargot - one of the hardest known Sudoku
+            [
+                1,0,0,0,0,7,0,9,0,
+                0,3,0,0,2,0,0,0,8,
+                0,0,9,6,0,0,5,0,0,
+                0,0,5,3,0,0,9,0,0,
+                0,1,0,0,8,0,0,0,2,
+                6,0,0,0,0,4,0,0,0,
+                3,0,0,0,0,0,0,1,0,
+                0,4,0,0,0,0,0,0,7,
+                0,0,7,0,0,0,3,0,0
+            ],
+            // Platinum Blonde
+            [
+                0,0,0,0,0,0,0,1,2,
+                0,0,0,0,0,0,0,0,3,
+                0,0,2,3,0,0,4,0,0,
+                0,0,1,8,0,0,0,0,5,
+                0,6,0,0,7,0,8,0,0,
+                0,0,0,0,0,9,0,0,0,
+                0,0,8,5,0,0,0,0,0,
+                9,0,0,0,4,0,5,0,0,
+                4,7,0,0,0,6,0,0,0
+            ],
+            // Easter Monster
+            [
+                1,0,0,0,0,0,0,0,2,
+                0,9,0,4,0,0,0,5,0,
+                0,0,6,0,0,0,7,0,0,
+                0,5,0,9,0,3,0,0,0,
+                0,0,0,0,7,0,0,0,0,
+                0,0,0,8,5,0,0,4,0,
+                7,0,0,0,0,0,6,0,0,
+                0,3,0,0,0,9,0,8,0,
+                0,0,2,0,0,0,0,0,1
+            ],
+            // Golden Nugget
+            [
+                0,0,0,0,0,0,0,3,9,
+                0,0,0,0,0,1,0,0,5,
+                0,0,3,0,5,0,8,0,0,
+                0,0,8,0,9,0,0,0,6,
+                0,7,0,0,0,2,0,0,0,
+                1,0,0,4,0,0,0,0,0,
+                0,0,9,0,8,0,0,5,0,
+                0,2,0,0,0,0,6,0,0,
+                4,0,0,7,0,0,0,0,0
+            ],
+            // Inkara 2012
+            [
+                8,0,0,0,0,0,0,0,0,
+                0,0,3,6,0,0,0,0,0,
+                0,7,0,0,9,0,2,0,0,
+                0,5,0,0,0,7,0,0,0,
+                0,0,0,0,4,5,7,0,0,
+                0,0,0,1,0,0,0,3,0,
+                0,0,1,0,0,0,0,6,8,
+                0,0,8,5,0,0,0,1,0,
+                0,9,0,0,0,0,4,0,0
+            ],
+            // 17-clue minimal
+            [
+                0,0,0,0,0,0,0,0,0,
+                0,0,0,0,0,3,0,8,5,
+                0,0,1,0,2,0,0,0,0,
+                0,0,0,5,0,7,0,0,0,
+                0,0,4,0,0,0,1,0,0,
+                0,9,0,0,0,0,0,0,0,
+                5,0,0,0,0,0,0,7,3,
+                0,0,2,0,1,0,0,0,0,
+                0,0,0,0,4,0,0,0,9
+            ],
+            // World's hardest by Arto Inkala
+            [
+                0,0,5,3,0,0,0,0,0,
+                8,0,0,0,0,0,0,2,0,
+                0,7,0,0,1,0,5,0,0,
+                4,0,0,0,0,5,3,0,0,
+                0,1,0,0,7,0,0,0,6,
+                0,0,3,2,0,0,0,8,0,
+                0,6,0,5,0,0,0,0,9,
+                0,0,4,0,0,0,0,3,0,
+                0,0,0,0,0,9,7,0,0
+            ]
+        ];
+
+        // Default to extreme
+        let puzzles = extremePuzzles;
 
         // Initialize
         function initialize() {
@@ -461,11 +557,42 @@ for h in H_cycles:           # Update answer K times
             }
         }
 
+        // Set difficulty
+        window.setDifficulty = function(level) {
+            currentDifficulty = level;
+
+            // Update button styles
+            document.getElementById('diff-easy').className = 'btn btn-secondary';
+            document.getElementById('diff-hard').className = 'btn btn-secondary';
+            document.getElementById('diff-extreme').className = 'btn btn-secondary';
+            document.getElementById('diff-easy').style.cssText = 'padding: 0.4rem 0.8rem; font-size: 0.75rem;';
+            document.getElementById('diff-hard').style.cssText = 'padding: 0.4rem 0.8rem; font-size: 0.75rem;';
+            document.getElementById('diff-extreme').style.cssText = 'padding: 0.4rem 0.8rem; font-size: 0.75rem;';
+
+            document.getElementById(`diff-${level}`).className = 'btn btn-primary';
+
+            // Switch puzzle set
+            if (level === 'easy') {
+                puzzles = easyPuzzles;
+            } else if (level === 'hard') {
+                puzzles = hardPuzzles;
+            } else {
+                puzzles = extremePuzzles;
+            }
+
+            newPuzzle();
+        };
+
         // New puzzle
         window.newPuzzle = function() {
             const idx = Math.floor(Math.random() * puzzles.length);
             currentPuzzle = [...puzzles[idx]];
             originalPuzzle = [...puzzles[idx]];
+
+            // Count given cells
+            const givenCount = currentPuzzle.filter(x => x > 0).length;
+            console.log(`Puzzle: ${givenCount} given cells (${currentDifficulty})`);
+
             renderGrid(currentPuzzle);
             clearVisualizations();
         };
