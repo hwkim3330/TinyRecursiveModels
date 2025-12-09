@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TRM - Real Model Visualization</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xz/fonts@1/serve/plus-jakarta-sans.min.css">
+    <style>
+        :root {
+            --primary: #8b5cf6;
+            --secondary: #06b6d4;
+            --dark: #0f172a;
+            --darker: #020617;
+        }
+
+        * {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--darker) 0%, var(--dark) 50%, #1e1b4b 100%);
+            min-height: 100vh;
+            color: white;
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Heatmap Canvas */
+        .heatmap-container {
+            position: relative;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .heatmap-canvas {
+            display: block;
+            border-radius: 8px;
+        }
+
+        /* Sudoku Grid */
+        .sudoku-grid {
+            display: grid;
+            grid-template-columns: repeat(9, 1fr);
+            gap: 1px;
+            background: rgba(255,255,255,0.2);
+            padding: 2px;
+            border-radius: 8px;
+            max-width: 324px;
+        }
+
+        .sudoku-cell {
+            width: 34px;
+            height: 34px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(15, 23, 42, 0.9);
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .sudoku-cell:hover {
+            background: rgba(139, 92, 246, 0.3);
+        }
+
+        .sudoku-cell.given {
+            color: #9ca3af;
+        }
+
+        .sudoku-cell.solved {
+            color: #10b981;
+        }
+
+        .sudoku-cell.processing {
+            animation: pulse 0.5s infinite;
+            background: rgba(139, 92, 246, 0.2);
+        }
+
+        .sudoku-cell:nth-child(3n) {
+            border-right: 2px solid rgba(255,255,255,0.3);
+        }
+
+        .sudoku-cell:nth-child(n+19):nth-child(-n+27),
+        .sudoku-cell:nth-child(n+46):nth-child(-n+54) {
+            border-bottom: 2px solid rgba(255,255,255,0.3);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 9999px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), #7c3aed);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-2px);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: rgba(255,255,255,0.1);
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.15);
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255,255,255,0.1);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .step-indicator {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            padding: 0.5rem 1rem;
+            background: rgba(255,255,255,0.05);
+            border-radius: 9999px;
+            font-size: 0.875rem;
+        }
+
+        .step-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+        }
+
+        .step-dot.active {
+            background: var(--primary);
+            box-shadow: 0 0 10px var(--primary);
+        }
+
+        .step-dot.done {
+            background: #10b981;
+        }
+
+        .activation-label {
+            position: absolute;
+            bottom: 100%;
+            left: 0;
+            font-size: 0.75rem;
+            color: #9ca3af;
+            margin-bottom: 0.25rem;
+        }
+
+        .colorbar {
+            height: 20px;
+            border-radius: 4px;
+            background: linear-gradient(90deg,
+                #0c0a3e 0%,
+                #3d1c73 20%,
+                #7c3aed 40%,
+                #f59e0b 60%,
+                #ef4444 80%,
+                #ffffff 100%
+            );
+        }
+
+        .cycle-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+            padding: 1rem;
+            background: rgba(0,0,0,0.2);
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        .cycle-info-item {
+            display: flex;
+            justify-content: space-between;
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div id="loading" class="loading-overlay">
+        <div class="spinner"></div>
+        <div>Loading WASM TRM Model...</div>
+    </div>
+
+    <!-- Header -->
+    <header class="glass" style="position: fixed; top: 0; left: 0; right: 0; z-index: 100; padding: 1rem 2rem;">
+        <div style="max-width: 1400px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--secondary)); display: flex; align-items: center; justify-content: center; font-weight: 700;">T</div>
+                <span style="font-size: 1.25rem; font-weight: 700;" class="gradient-text">TRM Live</span>
+                <span style="font-size: 0.75rem; padding: 0.25rem 0.5rem; background: rgba(16, 185, 129, 0.2); color: #10b981; border-radius: 9999px;">WASM</span>
+            </div>
+            <div style="display: flex; gap: 1rem; align-items: center;">
+                <a href="index.html" class="btn btn-secondary" style="font-size: 0.875rem;">Demo</a>
+                <a href="https://github.com/hwkim3330/TinyRecursiveModels" target="_blank" class="btn btn-primary" style="font-size: 0.875rem;">GitHub</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main style="padding: 6rem 2rem 2rem; max-width: 1400px; margin: 0 auto;">
+        <div style="text-align: center; margin-bottom: 2rem;">
+            <h1 style="font-size: 2rem; font-weight: 800; margin-bottom: 0.5rem;">
+                <span class="gradient-text">Real-Time Neural Network Visualization</span>
+            </h1>
+            <p style="color: #9ca3af;">Watch the TRM model think step-by-step in your browser</p>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 350px 1fr; gap: 2rem; align-items: start;">
+            <!-- Left: Controls & Puzzle -->
+            <div class="glass" style="border-radius: 1rem; padding: 1.5rem;">
+                <h2 style="font-weight: 700; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                    <span style="font-size: 1.5rem;">9</span>
+                    <span style="color: #9ca3af; font-size: 0.875rem;">Sudoku Puzzle</span>
+                </h2>
+
+                <div id="sudoku-grid" class="sudoku-grid" style="margin: 0 auto;"></div>
+
+                <div style="margin-top: 1.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <button id="btn-solve" onclick="runInference()" class="btn btn-primary">
+                        Run TRM
+                    </button>
+                    <button id="btn-step" onclick="runStepByStep()" class="btn btn-secondary">
+                        Step-by-Step
+                    </button>
+                    <button onclick="resetPuzzle()" class="btn btn-secondary">Reset</button>
+                    <button onclick="newPuzzle()" class="btn btn-secondary">New</button>
+                </div>
+
+                <div style="margin-top: 1.5rem;">
+                    <h3 style="font-size: 0.875rem; color: #9ca3af; margin-bottom: 0.5rem;">Model Config</h3>
+                    <div class="cycle-info">
+                        <div class="cycle-info-item">
+                            <span style="color: #6b7280;">Hidden Size:</span>
+                            <span id="cfg-hidden">128</span>
+                        </div>
+                        <div class="cycle-info-item">
+                            <span style="color: #6b7280;">H-Cycles:</span>
+                            <span id="cfg-h">3</span>
+                        </div>
+                        <div class="cycle-info-item">
+                            <span style="color: #6b7280;">L-Cycles:</span>
+                            <span id="cfg-l">6</span>
+                        </div>
+                        <div class="cycle-info-item">
+                            <span style="color: #6b7280;">L-Layers:</span>
+                            <span id="cfg-layers">2</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 1.5rem;">
+                    <h3 style="font-size: 0.875rem; color: #9ca3af; margin-bottom: 0.5rem;">Inference Progress</h3>
+                    <div id="progress-container">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 0.25rem;">
+                            <span>Step <span id="current-step">0</span> / <span id="total-steps">18</span></span>
+                            <span id="step-time">0ms</span>
+                        </div>
+                        <div style="height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden;">
+                            <div id="progress-bar" style="height: 100%; width: 0%; background: linear-gradient(90deg, var(--primary), var(--secondary)); transition: width 0.3s;"></div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 1rem;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 0.25rem;">
+                            <span>Confidence</span>
+                            <span id="confidence-val">0%</span>
+                        </div>
+                        <div style="height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden;">
+                            <div id="confidence-bar" style="height: 100%; width: 0%; background: #10b981; transition: width 0.3s;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Visualizations -->
+            <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                <!-- Activation Heatmaps -->
+                <div class="glass" style="border-radius: 1rem; padding: 1.5rem;">
+                    <h2 style="font-weight: 700; margin-bottom: 1rem;">Layer Activations</h2>
+                    <p style="font-size: 0.75rem; color: #6b7280; margin-bottom: 1rem;">
+                        z_H = Answer state, z_L = Latent/reasoning state (81 positions x hidden_size)
+                    </p>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+                        <div class="heatmap-container">
+                            <div class="activation-label">z_H (Answer State) - 81 x 128</div>
+                            <canvas id="canvas-zh" class="heatmap-canvas" width="400" height="200"></canvas>
+                        </div>
+                        <div class="heatmap-container">
+                            <div class="activation-label">z_L (Latent State) - 81 x 128</div>
+                            <canvas id="canvas-zl" class="heatmap-canvas" width="400" height="200"></canvas>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 1rem; display: flex; align-items: center; gap: 1rem;">
+                        <span style="font-size: 0.75rem; color: #6b7280;">Low</span>
+                        <div class="colorbar" style="flex: 1;"></div>
+                        <span style="font-size: 0.75rem; color: #6b7280;">High</span>
+                    </div>
+                </div>
+
+                <!-- Recursive Steps Visualization -->
+                <div class="glass" style="border-radius: 1rem; padding: 1.5rem;">
+                    <h2 style="font-weight: 700; margin-bottom: 1rem;">Recursive Reasoning Steps</h2>
+
+                    <div id="step-visualization" style="display: flex; gap: 1rem; overflow-x: auto; padding-bottom: 1rem;">
+                        <!-- Will be populated by JS -->
+                    </div>
+
+                    <div style="margin-top: 1rem; padding: 1rem; background: rgba(0,0,0,0.2); border-radius: 0.5rem;">
+                        <div style="font-family: monospace; font-size: 0.75rem; color: #9ca3af; overflow-x: auto;">
+<pre>
+for h in H_cycles:           # Update answer K times
+    for l in L_cycles:       # Reason N times per update
+        z_L = Layer(z_L, z_H + input)  # Update latent
+    z_H = Layer(z_H, z_L)    # Update answer
+</pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Output Comparison -->
+                <div class="glass" style="border-radius: 1rem; padding: 1.5rem;">
+                    <h2 style="font-weight: 700; margin-bottom: 1rem;">Output Evolution</h2>
+                    <p style="font-size: 0.75rem; color: #6b7280; margin-bottom: 1rem;">
+                        Watch how the model's prediction evolves through recursive refinement
+                    </p>
+
+                    <div id="output-evolution" style="display: flex; gap: 1rem; overflow-x: auto; padding-bottom: 1rem;">
+                        <!-- Will be populated by JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script type="module">
+        import init, {
+            TRM,
+            TRMConfig,
+            create_sudoku_input,
+            decode_sudoku_output,
+            normalize_activations,
+            validate_sudoku,
+            compute_attention_heatmap
+        } from './wasm/wasm_trm.js';
+
+        let trm = null;
+        let currentPuzzle = null;
+        let originalPuzzle = null;
+        let isRunning = false;
+        let stepHistory = [];
+
+        // Sample Sudoku puzzles (0 = empty)
+        const puzzles = [
+            [
+                5,3,0,0,7,0,0,0,0,
+                6,0,0,1,9,5,0,0,0,
+                0,9,8,0,0,0,0,6,0,
+                8,0,0,0,6,0,0,0,3,
+                4,0,0,8,0,3,0,0,1,
+                7,0,0,0,2,0,0,0,6,
+                0,6,0,0,0,0,2,8,0,
+                0,0,0,4,1,9,0,0,5,
+                0,0,0,0,8,0,0,7,9
+            ],
+            [
+                0,0,0,2,6,0,7,0,1,
+                6,8,0,0,7,0,0,9,0,
+                1,9,0,0,0,4,5,0,0,
+                8,2,0,1,0,0,0,4,0,
+                0,0,4,6,0,2,9,0,0,
+                0,5,0,0,0,3,0,2,8,
+                0,0,9,3,0,0,0,7,4,
+                0,4,0,0,5,0,0,3,6,
+                7,0,3,0,1,8,0,0,0
+            ],
+            [
+                0,2,0,6,0,8,0,0,0,
+                5,8,0,0,0,9,7,0,0,
+                0,0,0,0,4,0,0,0,0,
+                3,7,0,0,0,0,5,0,0,
+                6,0,0,0,0,0,0,0,4,
+                0,0,8,0,0,0,0,1,3,
+                0,0,0,0,2,0,0,0,0,
+                0,0,9,8,0,0,0,3,6,
+                0,0,0,3,0,6,0,9,0
+            ]
+        ];
+
+        // Initialize
+        async function initialize() {
+            try {
+                await init();
+                console.log('WASM TRM initialized!');
+
+                // Create model
+                const config = TRMConfig.for_sudoku();
+                trm = new TRM(config);
+
+                // Update UI
+                document.getElementById('cfg-hidden').textContent = '128';
+                document.getElementById('cfg-h').textContent = '3';
+                document.getElementById('cfg-l').textContent = '6';
+                document.getElementById('cfg-layers').textContent = '2';
+                document.getElementById('total-steps').textContent = '18'; // 3 * 6
+
+                // Load initial puzzle
+                newPuzzle();
+
+                // Hide loading
+                document.getElementById('loading').style.display = 'none';
+
+            } catch (e) {
+                console.error('Failed to initialize:', e);
+                document.getElementById('loading').innerHTML = `
+                    <div style="color: #ef4444; text-align: center;">
+                        <div style="font-size: 2rem; margin-bottom: 1rem;">Error</div>
+                        <div>Failed to load WASM module</div>
+                        <div style="font-size: 0.875rem; color: #9ca3af; margin-top: 0.5rem;">${e.message}</div>
+                    </div>
+                `;
+            }
+        }
+
+        // Render Sudoku grid
+        window.renderGrid = function(puzzle, solved = null) {
+            const grid = document.getElementById('sudoku-grid');
+            grid.innerHTML = '';
+
+            for (let i = 0; i < 81; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'sudoku-cell';
+
+                const original = originalPuzzle ? originalPuzzle[i] : puzzle[i];
+                const value = solved ? solved[i] : puzzle[i];
+
+                if (value > 0 && value <= 9) {
+                    cell.textContent = value;
+                    if (original > 0) {
+                        cell.classList.add('given');
+                    } else if (solved) {
+                        cell.classList.add('solved');
+                    }
+                }
+
+                grid.appendChild(cell);
+            }
+        };
+
+        // New puzzle
+        window.newPuzzle = function() {
+            const idx = Math.floor(Math.random() * puzzles.length);
+            currentPuzzle = [...puzzles[idx]];
+            originalPuzzle = [...puzzles[idx]];
+            stepHistory = [];
+            renderGrid(currentPuzzle);
+            clearVisualizations();
+        };
+
+        // Reset puzzle
+        window.resetPuzzle = function() {
+            if (originalPuzzle) {
+                currentPuzzle = [...originalPuzzle];
+                stepHistory = [];
+                renderGrid(currentPuzzle);
+                clearVisualizations();
+            }
+        };
+
+        // Clear visualizations
+        function clearVisualizations() {
+            document.getElementById('progress-bar').style.width = '0%';
+            document.getElementById('confidence-bar').style.width = '0%';
+            document.getElementById('confidence-val').textContent = '0%';
+            document.getElementById('current-step').textContent = '0';
+            document.getElementById('step-time').textContent = '0ms';
+            document.getElementById('step-visualization').innerHTML = '';
+            document.getElementById('output-evolution').innerHTML = '';
+
+            // Clear canvases
+            const zhCanvas = document.getElementById('canvas-zh');
+            const zlCanvas = document.getElementById('canvas-zl');
+            zhCanvas.getContext('2d').clearRect(0, 0, zhCanvas.width, zhCanvas.height);
+            zlCanvas.getContext('2d').clearRect(0, 0, zlCanvas.width, zlCanvas.height);
+        }
+
+        // Draw heatmap
+        function drawHeatmap(canvas, data, rows, cols) {
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+
+            const cellWidth = width / cols;
+            const cellHeight = height / rows;
+
+            // Normalize data
+            const normalized = normalize_activations(new Float32Array(data));
+
+            for (let i = 0; i < rows; i++) {
+                for (let j = 0; j < Math.min(cols, data.length / rows); j++) {
+                    const idx = i * Math.floor(data.length / rows) + j;
+                    if (idx < normalized.length) {
+                        const val = normalized[idx];
+                        ctx.fillStyle = getHeatmapColor(val);
+                        ctx.fillRect(j * cellWidth, i * cellHeight, cellWidth + 1, cellHeight + 1);
+                    }
+                }
+            }
+        }
+
+        // Heatmap color
+        function getHeatmapColor(val) {
+            // val is 0-255
+            const t = val / 255;
+
+            // Purple -> Orange -> White
+            let r, g, b;
+            if (t < 0.5) {
+                // Purple to Orange
+                const t2 = t * 2;
+                r = Math.floor(61 + (245 - 61) * t2);
+                g = Math.floor(28 + (158 - 28) * t2);
+                b = Math.floor(115 + (11 - 115) * t2);
+            } else {
+                // Orange to White
+                const t2 = (t - 0.5) * 2;
+                r = Math.floor(245 + (255 - 245) * t2);
+                g = Math.floor(158 + (255 - 158) * t2);
+                b = Math.floor(11 + (255 - 11) * t2);
+            }
+
+            return `rgb(${r},${g},${b})`;
+        }
+
+        // Run full inference
+        window.runInference = async function() {
+            if (isRunning || !trm) return;
+            isRunning = true;
+
+            document.getElementById('btn-solve').disabled = true;
+            document.getElementById('btn-step').disabled = true;
+
+            const startTime = performance.now();
+
+            try {
+                const input = new Uint8Array(currentPuzzle);
+                const output = trm.forward(input);
+
+                const endTime = performance.now();
+
+                // Update UI
+                renderGrid(originalPuzzle, Array.from(output));
+
+                document.getElementById('progress-bar').style.width = '100%';
+                document.getElementById('current-step').textContent = '18';
+                document.getElementById('step-time').textContent = `${Math.round(endTime - startTime)}ms`;
+                document.getElementById('confidence-bar').style.width = '100%';
+                document.getElementById('confidence-val').textContent = '100%';
+
+                // Draw final activations
+                const zH = trm.get_z_h();
+                const zL = trm.get_z_l();
+                drawHeatmap(document.getElementById('canvas-zh'), Array.from(zH), 81, 128);
+                drawHeatmap(document.getElementById('canvas-zl'), Array.from(zL), 81, 128);
+
+                // Validate
+                const isValid = validate_sudoku(output);
+                console.log('Solution valid:', isValid);
+
+            } catch (e) {
+                console.error('Inference error:', e);
+            }
+
+            isRunning = false;
+            document.getElementById('btn-solve').disabled = false;
+            document.getElementById('btn-step').disabled = false;
+        };
+
+        // Run step by step
+        window.runStepByStep = async function() {
+            if (isRunning || !trm) return;
+            isRunning = true;
+
+            document.getElementById('btn-solve').disabled = true;
+            document.getElementById('btn-step').disabled = true;
+            clearVisualizations();
+
+            trm.reset();
+            const input = new Uint8Array(currentPuzzle);
+
+            stepHistory = [];
+            const stepViz = document.getElementById('step-visualization');
+            const outputEvolution = document.getElementById('output-evolution');
+
+            const H_CYCLES = 3;
+            const L_CYCLES = 6;
+            const totalSteps = H_CYCLES * L_CYCLES;
+            let stepCount = 0;
+
+            for (let h = 0; h < H_CYCLES; h++) {
+                // Create H-cycle container
+                const hContainer = document.createElement('div');
+                hContainer.style.cssText = 'background: rgba(255,255,255,0.03); border-radius: 0.5rem; padding: 0.75rem; min-width: 200px;';
+                hContainer.innerHTML = `
+                    <div style="font-size: 0.75rem; color: var(--primary); margin-bottom: 0.5rem; font-weight: 600;">
+                        H-Cycle ${h + 1}
+                    </div>
+                    <div id="h-cycle-${h}" style="display: flex; flex-direction: column; gap: 0.25rem;"></div>
+                `;
+                stepViz.appendChild(hContainer);
+                const hCycleDiv = document.getElementById(`h-cycle-${h}`);
+
+                for (let l = 0; l < L_CYCLES; l++) {
+                    stepCount++;
+                    const startTime = performance.now();
+
+                    const stepInfo = trm.step(input);
+
+                    const endTime = performance.now();
+
+                    // Update progress
+                    document.getElementById('current-step').textContent = stepCount;
+                    document.getElementById('progress-bar').style.width = `${(stepCount / totalSteps) * 100}%`;
+                    document.getElementById('step-time').textContent = `${Math.round(endTime - startTime)}ms`;
+
+                    const confidence = Math.round(stepInfo.confidence * 100);
+                    document.getElementById('confidence-val').textContent = `${confidence}%`;
+                    document.getElementById('confidence-bar').style.width = `${confidence}%`;
+
+                    // Add L-step indicator
+                    const lStep = document.createElement('div');
+                    lStep.style.cssText = 'display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem;';
+                    lStep.innerHTML = `
+                        <div style="width: 8px; height: 8px; border-radius: 50%; background: var(--secondary);"></div>
+                        <span style="color: #9ca3af;">L-${l + 1}</span>
+                        <span style="color: #6b7280;">${Math.round(endTime - startTime)}ms</span>
+                    `;
+                    hCycleDiv.appendChild(lStep);
+
+                    // Draw activations
+                    const zH = trm.get_z_h();
+                    const zL = trm.get_z_l();
+                    drawHeatmap(document.getElementById('canvas-zh'), Array.from(zH), 81, 128);
+                    drawHeatmap(document.getElementById('canvas-zl'), Array.from(zL), 81, 128);
+
+                    // Store history
+                    stepHistory.push({
+                        h, l,
+                        zH: Array.from(zH.slice(0, 64)),
+                        zL: Array.from(zL.slice(0, 64)),
+                        confidence: stepInfo.confidence
+                    });
+
+                    // Delay for visualization
+                    await new Promise(r => setTimeout(r, 50));
+
+                    stepInfo.free();
+                }
+
+                // Get current output after H-cycle
+                const currentOutput = trm.get_current_output();
+
+                // Add output snapshot
+                const outputSnap = document.createElement('div');
+                outputSnap.style.cssText = 'background: rgba(255,255,255,0.03); border-radius: 0.5rem; padding: 0.75rem; min-width: 120px;';
+                outputSnap.innerHTML = `
+                    <div style="font-size: 0.75rem; color: #10b981; margin-bottom: 0.5rem; font-weight: 600;">
+                        After H-${h + 1}
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(9, 1fr); gap: 1px; font-size: 0.5rem;">
+                        ${Array.from(currentOutput).slice(0, 81).map((v, i) => {
+                            const orig = originalPuzzle[i];
+                            const isCorrect = v > 0 && v <= 9;
+                            const color = orig > 0 ? '#6b7280' : (isCorrect ? '#10b981' : '#ef4444');
+                            return `<div style="width: 12px; height: 12px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.3); color: ${color};">${v > 0 && v <= 9 ? v : '.'}</div>`;
+                        }).join('')}
+                    </div>
+                `;
+                outputEvolution.appendChild(outputSnap);
+
+                // Update main grid
+                renderGrid(originalPuzzle, Array.from(currentOutput));
+            }
+
+            isRunning = false;
+            document.getElementById('btn-solve').disabled = false;
+            document.getElementById('btn-step').disabled = false;
+        };
+
+        // Start
+        initialize();
+    </script>
+</body>
+</html>

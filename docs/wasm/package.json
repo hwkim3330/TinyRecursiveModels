@@ -1,0 +1,19 @@
+{
+  "name": "wasm-trm",
+  "type": "module",
+  "collaborators": [
+    "TRM Demo"
+  ],
+  "description": "Tiny Recursive Model - WASM implementation",
+  "version": "0.1.0",
+  "files": [
+    "wasm_trm_bg.wasm",
+    "wasm_trm.js",
+    "wasm_trm.d.ts"
+  ],
+  "main": "wasm_trm.js",
+  "types": "wasm_trm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
