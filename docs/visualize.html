@@ -252,6 +252,15 @@
                     </div>
                 </div>
 
+                <div style="margin-top: 1rem;">
+                    <div style="font-size: 0.75rem; color: #6b7280; margin-bottom: 0.5rem;">Reasoning Depth</div>
+                    <div style="display: flex; gap: 0.25rem;">
+                        <button onclick="setDepth('normal')" id="depth-normal" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Normal (3x6)</button>
+                        <button onclick="setDepth('deep')" id="depth-deep" class="btn btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Deep (6x12)</button>
+                        <button onclick="setDepth('ultra')" id="depth-ultra" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Ultra (10x20)</button>
+                    </div>
+                </div>
+
                 <div style="margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
                     <button id="btn-solve" onclick="runInference()" class="btn btn-primary">
                         Run TRM
@@ -380,6 +389,7 @@ for h in H_cycles:           # Update answer K times
 
         // Difficulty levels
         let currentDifficulty = 'extreme';
+        let currentDepth = 'deep'; // Default to deep for better results
 
         // Easy puzzles (30+ given)
         const easyPuzzles = [
@@ -507,7 +517,18 @@ for h in H_cycles:           # Update answer K times
             try {
                 console.log('Initializing TRM...');
 
-                const config = TRMConfig.forSudoku();
+                // Start with Deep config (6x12 = 72 steps)
+                const config = new TRMConfig({
+                    hiddenSize: 128,
+                    numHeads: 4,
+                    expansion: 2.0,
+                    hCycles: 6,
+                    lCycles: 12,
+                    lLayers: 2,
+                    vocabSize: 12,
+                    seqLen: 81,
+                    useMlpT: true
+                });
                 trm = new TRM(config);
 
                 document.getElementById('cfg-hidden').textContent = config.hiddenSize;
@@ -556,6 +577,52 @@ for h in H_cycles:           # Update answer K times
                 grid.appendChild(cell);
             }
         }
+
+        // Set reasoning depth
+        window.setDepth = function(level) {
+            currentDepth = level;
+
+            // Update button styles
+            document.getElementById('depth-normal').className = 'btn btn-secondary';
+            document.getElementById('depth-deep').className = 'btn btn-secondary';
+            document.getElementById('depth-ultra').className = 'btn btn-secondary';
+            document.getElementById('depth-normal').style.cssText = 'padding: 0.4rem 0.8rem; font-size: 0.75rem;';
+            document.getElementById('depth-deep').style.cssText = 'padding: 0.4rem 0.8rem; font-size: 0.75rem;';
+            document.getElementById('depth-ultra').style.cssText = 'padding: 0.4rem 0.8rem; font-size: 0.75rem;';
+            document.getElementById(`depth-${level}`).className = 'btn btn-primary';
+
+            // Reinitialize model with new config
+            let hCycles, lCycles;
+            if (level === 'normal') {
+                hCycles = 3; lCycles = 6;
+            } else if (level === 'deep') {
+                hCycles = 6; lCycles = 12;
+            } else { // ultra
+                hCycles = 10; lCycles = 20;
+            }
+
+            const config = new TRMConfig({
+                hiddenSize: 128,
+                numHeads: 4,
+                expansion: 2.0,
+                hCycles: hCycles,
+                lCycles: lCycles,
+                lLayers: 2,
+                vocabSize: 12,
+                seqLen: 81,
+                useMlpT: true
+            });
+
+            trm = new TRM(config);
+
+            // Update UI
+            document.getElementById('cfg-h').textContent = hCycles;
+            document.getElementById('cfg-l').textContent = lCycles;
+            document.getElementById('total-steps').textContent = hCycles * lCycles;
+
+            console.log(`Depth: H=${hCycles}, L=${lCycles}, Total=${hCycles * lCycles} steps`);
+            clearVisualizations();
+        };
 
         // Set difficulty
         window.setDifficulty = function(level) {
