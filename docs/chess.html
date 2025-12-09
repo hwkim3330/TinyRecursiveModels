@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TRM Chess - Find the Best Move</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xz/fonts@1/serve/plus-jakarta-sans.min.css">
+    <style>
+        :root {
+            --primary: #8b5cf6;
+            --secondary: #06b6d4;
+            --dark: #0f172a;
+            --darker: #020617;
+        }
+
+        * {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--darker) 0%, var(--dark) 50%, #1e1b4b 100%);
+            min-height: 100vh;
+            color: white;
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .chess-board {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 0;
+            border: 3px solid rgba(139, 92, 246, 0.5);
+            border-radius: 8px;
+            overflow: hidden;
+            max-width: 400px;
+        }
+
+        .chess-cell {
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .chess-cell.light {
+            background: #f0d9b5;
+        }
+
+        .chess-cell.dark {
+            background: #b58863;
+        }
+
+        .chess-cell:hover {
+            box-shadow: inset 0 0 0 3px var(--primary);
+        }
+
+        .chess-cell.selected {
+            box-shadow: inset 0 0 0 3px #10b981;
+            background: rgba(16, 185, 129, 0.3) !important;
+        }
+
+        .chess-cell.highlight {
+            box-shadow: inset 0 0 0 3px #f59e0b;
+        }
+
+        .chess-cell.best-move {
+            animation: pulse-green 1s infinite;
+        }
+
+        @keyframes pulse-green {
+            0%, 100% { box-shadow: inset 0 0 0 3px #10b981; }
+            50% { box-shadow: inset 0 0 0 5px #10b981, 0 0 20px #10b981; }
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 9999px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), #7c3aed);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-2px);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: rgba(255,255,255,0.1);
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.15);
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255,255,255,0.1);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .heatmap-canvas {
+            display: block;
+            border-radius: 8px;
+            background: rgba(0,0,0,0.3);
+        }
+
+        .colorbar {
+            height: 20px;
+            border-radius: 4px;
+            background: linear-gradient(90deg,
+                #0c0a3e 0%,
+                #3d1c73 20%,
+                #7c3aed 40%,
+                #f59e0b 60%,
+                #ef4444 80%,
+                #ffffff 100%
+            );
+        }
+
+        .move-list {
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 0.875rem;
+        }
+
+        .move-item {
+            padding: 0.5rem;
+            border-radius: 0.25rem;
+            margin-bottom: 0.25rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .move-item:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .move-item.best {
+            background: rgba(16, 185, 129, 0.2);
+            border-left: 3px solid #10b981;
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div id="loading" class="loading-overlay">
+        <div class="spinner"></div>
+        <div>Initializing TRM Chess...</div>
+    </div>
+
+    <!-- Header -->
+    <header class="glass" style="position: fixed; top: 0; left: 0; right: 0; z-index: 100; padding: 1rem 2rem;">
+        <div style="max-width: 1400px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--secondary)); display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">♞</div>
+                <span style="font-size: 1.25rem; font-weight: 700;" class="gradient-text">TRM Chess</span>
+                <span style="font-size: 0.75rem; padding: 0.25rem 0.5rem; background: rgba(16, 185, 129, 0.2); color: #10b981; border-radius: 9999px;">JS</span>
+            </div>
+            <div style="display: flex; gap: 1rem; align-items: center;">
+                <a href="visualize.html" class="btn btn-secondary" style="font-size: 0.875rem;">Sudoku</a>
+                <a href="index.html" class="btn btn-secondary" style="font-size: 0.875rem;">Demo</a>
+                <a href="https://github.com/hwkim3330/TinyRecursiveModels" target="_blank" class="btn btn-primary" style="font-size: 0.875rem;">GitHub</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main style="padding: 6rem 2rem 2rem; max-width: 1400px; margin: 0 auto;">
+        <div style="text-align: center; margin-bottom: 2rem;">
+            <h1 style="font-size: 2rem; font-weight: 800; margin-bottom: 0.5rem;">
+                <span class="gradient-text">Chess Puzzle Solver</span>
+            </h1>
+            <p style="color: #9ca3af;">Find the best move using recursive reasoning</p>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 420px 1fr; gap: 2rem; align-items: start;">
+            <!-- Left: Chess Board & Controls -->
+            <div class="glass" style="border-radius: 1rem; padding: 1.5rem;">
+                <h2 style="font-weight: 700; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                    <span style="font-size: 1.5rem;">♔</span>
+                    <span style="color: #9ca3af; font-size: 0.875rem;">Chess Puzzle</span>
+                    <span id="puzzle-name" style="color: #f59e0b; font-size: 0.75rem; margin-left: auto;">Mate in 1</span>
+                </h2>
+
+                <div id="chess-board" class="chess-board" style="margin: 0 auto;"></div>
+
+                <div style="margin-top: 1rem; text-align: center;">
+                    <div id="turn-indicator" style="font-size: 0.875rem; color: #9ca3af;">
+                        <span id="turn-color" style="font-size: 1.25rem;">♔</span> White to move
+                    </div>
+                </div>
+
+                <div style="margin-top: 1rem;">
+                    <div style="font-size: 0.75rem; color: #6b7280; margin-bottom: 0.5rem;">Puzzle Type</div>
+                    <div style="display: flex; gap: 0.25rem; flex-wrap: wrap;">
+                        <button onclick="setPuzzleType('mate1')" id="type-mate1" class="btn btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Mate in 1</button>
+                        <button onclick="setPuzzleType('mate2')" id="type-mate2" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Mate in 2</button>
+                        <button onclick="setPuzzleType('tactics')" id="type-tactics" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Tactics</button>
+                    </div>
+                </div>
+
+                <div style="margin-top: 1rem;">
+                    <div style="font-size: 0.75rem; color: #6b7280; margin-bottom: 0.5rem;">Reasoning Depth</div>
+                    <div style="display: flex; gap: 0.25rem;">
+                        <button onclick="setDepth('normal')" id="depth-normal" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Normal</button>
+                        <button onclick="setDepth('deep')" id="depth-deep" class="btn btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Deep</button>
+                        <button onclick="setDepth('ultra')" id="depth-ultra" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Ultra</button>
+                    </div>
+                </div>
+
+                <div style="margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <button id="btn-solve" onclick="findBestMove()" class="btn btn-primary">
+                        Find Best Move
+                    </button>
+                    <button onclick="resetBoard()" class="btn btn-secondary">Reset</button>
+                    <button onclick="newPuzzle()" class="btn btn-secondary">New Puzzle</button>
+                </div>
+
+                <div style="margin-top: 1.5rem;">
+                    <h3 style="font-size: 0.875rem; color: #9ca3af; margin-bottom: 0.5rem;">Model Progress</h3>
+                    <div>
+                        <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 0.25rem;">
+                            <span>Step <span id="current-step">0</span> / <span id="total-steps">72</span></span>
+                            <span id="step-time">0ms</span>
+                        </div>
+                        <div style="height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden;">
+                            <div id="progress-bar" style="height: 100%; width: 0%; background: linear-gradient(90deg, var(--primary), var(--secondary)); transition: width 0.3s;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Visualizations -->
+            <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                <!-- Best Move Display -->
+                <div class="glass" style="border-radius: 1rem; padding: 1.5rem;">
+                    <h2 style="font-weight: 700; margin-bottom: 1rem;">TRM Analysis</h2>
+
+                    <div id="analysis-result" style="padding: 1rem; background: rgba(0,0,0,0.2); border-radius: 0.5rem;">
+                        <div style="color: #6b7280; font-size: 0.875rem;">Click "Find Best Move" to analyze</div>
+                    </div>
+
+                    <div style="margin-top: 1rem;">
+                        <h3 style="font-size: 0.875rem; color: #9ca3af; margin-bottom: 0.5rem;">Top Candidate Moves</h3>
+                        <div id="move-candidates" class="move-list" style="padding: 0.5rem; background: rgba(0,0,0,0.2); border-radius: 0.5rem;">
+                            <div style="color: #6b7280; font-size: 0.75rem;">No analysis yet</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Activation Heatmap -->
+                <div class="glass" style="border-radius: 1rem; padding: 1.5rem;">
+                    <h2 style="font-weight: 700; margin-bottom: 1rem;">Board Attention</h2>
+                    <p style="font-size: 0.75rem; color: #6b7280; margin-bottom: 1rem;">
+                        Model's attention across the 64 squares
+                    </p>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div>
+                            <div style="font-size: 0.75rem; color: #9ca3af; margin-bottom: 0.5rem;">z_H (Position Evaluation)</div>
+                            <canvas id="canvas-zh" class="heatmap-canvas" width="256" height="256"></canvas>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.75rem; color: #9ca3af; margin-bottom: 0.5rem;">z_L (Move Reasoning)</div>
+                            <canvas id="canvas-zl" class="heatmap-canvas" width="256" height="256"></canvas>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 1rem; display: flex; align-items: center; gap: 1rem;">
+                        <span style="font-size: 0.75rem; color: #6b7280;">Low</span>
+                        <div class="colorbar" style="flex: 1;"></div>
+                        <span style="font-size: 0.75rem; color: #6b7280;">High</span>
+                    </div>
+                </div>
+
+                <!-- How it works -->
+                <div class="glass" style="border-radius: 1rem; padding: 1.5rem;">
+                    <h2 style="font-weight: 700; margin-bottom: 1rem;">How TRM Thinks About Chess</h2>
+                    <div style="font-family: monospace; font-size: 0.75rem; color: #9ca3af; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 0.5rem;">
+<pre>
+Input: 64 squares encoded as piece types (0-12)
+       + Position encoding for each square
+
+for h in H_cycles:           # Evaluate position K times
+    for l in L_cycles:       # Reason about moves N times
+        z_L = Layer(z_L, z_H + board)  # Update reasoning
+    z_H = Layer(z_H, z_L)    # Update evaluation
+
+Output: Best move prediction (from_square, to_square)
+</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/trm-chess.js"></script>
+    <script>
+        let chessTRM = null;
+        let currentBoard = null;
+        let selectedSquare = null;
+        let isRunning = false;
+        let currentPuzzleType = 'mate1';
+        let currentDepth = 'deep';
+
+        // Chess piece unicode
+        const PIECES = {
+            'K': '♔', 'Q': '♕', 'R': '♖', 'B': '♗', 'N': '♘', 'P': '♙',
+            'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟',
+            '.': ''
+        };
+
+        // Piece to index mapping for model
+        const PIECE_TO_IDX = {
+            '.': 0,
+            'P': 1, 'N': 2, 'B': 3, 'R': 4, 'Q': 5, 'K': 6,
+            'p': 7, 'n': 8, 'b': 9, 'r': 10, 'q': 11, 'k': 12
+        };
+
+        // Mate in 1 puzzles
+        const mate1Puzzles = [
+            {
+                name: "Back Rank Mate",
+                fen: "6k1/5ppp/8/8/8/8/8/R3K3",
+                turn: 'w',
+                solution: { from: 0, to: 7 },  // Ra8#
+                hint: "Rook to 8th rank"
+            },
+            {
+                name: "Queen Mate",
+                fen: "4k3/8/4K3/8/8/8/8/7Q",
+                turn: 'w',
+                solution: { from: 63, to: 60 },  // Qe8#
+                hint: "Queen delivers mate"
+            },
+            {
+                name: "Smothered Mate",
+                fen: "6rk/6pp/7N/8/8/8/8/7K",
+                turn: 'w',
+                solution: { from: 21, to: 6 },  // Nf7#
+                hint: "Knight smothers the king"
+            },
+            {
+                name: "Arabian Mate",
+                fen: "7k/7R/5N2/8/8/8/8/7K",
+                turn: 'w',
+                solution: { from: 15, to: 7 },  // Rh8#
+                hint: "Rook and knight work together"
+            },
+            {
+                name: "Anastasia's Mate",
+                fen: "5rk1/4Nppp/8/8/8/8/8/R6K",
+                turn: 'w',
+                solution: { from: 56, to: 48 },  // Ra8#
+                hint: "Knight blocks escape"
+            }
+        ];
+
+        // Mate in 2 puzzles
+        const mate2Puzzles = [
+            {
+                name: "Classic Mate in 2",
+                fen: "r1b1k2r/pppp1ppp/2n2n2/2b1p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR",
+                turn: 'w',
+                solution: { from: 39, to: 13 },  // Qxf7+
+                hint: "Queen sacrifice"
+            },
+            {
+                name: "Discovered Attack",
+                fen: "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R",
+                turn: 'w',
+                solution: { from: 26, to: 13 },  // Bxf7+
+                hint: "Bishop sacrifice"
+            }
+        ];
+
+        // Tactics puzzles
+        const tacticsPuzzles = [
+            {
+                name: "Fork",
+                fen: "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R",
+                turn: 'w',
+                solution: { from: 21, to: 36 },  // Ng5
+                hint: "Knight fork"
+            },
+            {
+                name: "Pin",
+                fen: "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R",
+                turn: 'w',
+                solution: { from: 33, to: 18 },  // Bxc6
+                hint: "Win the pinned piece"
+            }
+        ];
+
+        let puzzles = mate1Puzzles;
+
+        // Parse FEN to board array
+        function parseFEN(fen) {
+            const board = [];
+            const rows = fen.split('/');
+            for (const row of rows) {
+                for (const c of row) {
+                    if (c >= '1' && c <= '8') {
+                        for (let i = 0; i < parseInt(c); i++) {
+                            board.push('.');
+                        }
+                    } else {
+                        board.push(c);
+                    }
+                }
+            }
+            return board;
+        }
+
+        // Board to model input
+        function boardToInput(board) {
+            return new Uint8Array(board.map(p => PIECE_TO_IDX[p] || 0));
+        }
+
+        // Initialize
+        function initialize() {
+            try {
+                console.log('Initializing TRM Chess...');
+
+                // Create chess-specific config
+                const config = new ChessTRMConfig({
+                    hiddenSize: 128,
+                    hCycles: 6,
+                    lCycles: 12,
+                    lLayers: 2,
+                    vocabSize: 13,  // 12 piece types + empty
+                    seqLen: 64,     // 8x8 board
+                    useMlpT: true
+                });
+
+                chessTRM = new ChessTRM(config);
+
+                document.getElementById('total-steps').textContent = config.hCycles * config.lCycles;
+
+                newPuzzle();
+                document.getElementById('loading').style.display = 'none';
+
+                console.log('TRM Chess initialized!');
+            } catch (e) {
+                console.error('Failed to initialize:', e);
+                document.getElementById('loading').innerHTML = `
+                    <div style="color: #ef4444; text-align: center;">
+                        <div style="font-size: 2rem; margin-bottom: 1rem;">Error</div>
+                        <div>Failed to initialize TRM Chess</div>
+                        <div style="font-size: 0.875rem; color: #9ca3af; margin-top: 0.5rem;">${e.message}</div>
+                    </div>
+                `;
+            }
+        }
+
+        // Render chess board
+        function renderBoard(board, highlightSquares = []) {
+            const boardDiv = document.getElementById('chess-board');
+            boardDiv.innerHTML = '';
+
+            for (let i = 0; i < 64; i++) {
+                const row = Math.floor(i / 8);
+                const col = i % 8;
+                const isLight = (row + col) % 2 === 0;
+
+                const cell = document.createElement('div');
+                cell.className = `chess-cell ${isLight ? 'light' : 'dark'}`;
+                cell.dataset.square = i;
+
+                if (highlightSquares.includes(i)) {
+                    cell.classList.add('highlight');
+                }
+
+                const piece = board[i];
+                if (piece !== '.') {
+                    cell.textContent = PIECES[piece];
+                }
+
+                cell.onclick = () => selectSquare(i);
+                boardDiv.appendChild(cell);
+            }
+        }
+
+        // Select square
+        function selectSquare(idx) {
+            const cells = document.querySelectorAll('.chess-cell');
+            cells.forEach(c => c.classList.remove('selected'));
+
+            if (selectedSquare === idx) {
+                selectedSquare = null;
+            } else {
+                selectedSquare = idx;
+                cells[idx].classList.add('selected');
+            }
+        }
+
+        // Set puzzle type
+        window.setPuzzleType = function(type) {
+            currentPuzzleType = type;
+
+            document.getElementById('type-mate1').className = 'btn btn-secondary';
+            document.getElementById('type-mate2').className = 'btn btn-secondary';
+            document.getElementById('type-tactics').className = 'btn btn-secondary';
+            document.getElementById(`type-${type}`).className = 'btn btn-primary';
+
+            if (type === 'mate1') {
+                puzzles = mate1Puzzles;
+                document.getElementById('puzzle-name').textContent = 'Mate in 1';
+            } else if (type === 'mate2') {
+                puzzles = mate2Puzzles;
+                document.getElementById('puzzle-name').textContent = 'Mate in 2';
+            } else {
+                puzzles = tacticsPuzzles;
+                document.getElementById('puzzle-name').textContent = 'Tactics';
+            }
+
+            newPuzzle();
+        };
+
+        // Set depth
+        window.setDepth = function(level) {
+            currentDepth = level;
+
+            document.getElementById('depth-normal').className = 'btn btn-secondary';
+            document.getElementById('depth-deep').className = 'btn btn-secondary';
+            document.getElementById('depth-ultra').className = 'btn btn-secondary';
+            document.getElementById(`depth-${level}`).className = 'btn btn-primary';
+
+            let hCycles, lCycles;
+            if (level === 'normal') {
+                hCycles = 3; lCycles = 6;
+            } else if (level === 'deep') {
+                hCycles = 6; lCycles = 12;
+            } else {
+                hCycles = 10; lCycles = 20;
+            }
+
+            const config = new ChessTRMConfig({
+                hiddenSize: 128,
+                hCycles: hCycles,
+                lCycles: lCycles,
+                lLayers: 2,
+                vocabSize: 13,
+                seqLen: 64,
+                useMlpT: true
+            });
+
+            chessTRM = new ChessTRM(config);
+            document.getElementById('total-steps').textContent = hCycles * lCycles;
+        };
+
+        // New puzzle
+        window.newPuzzle = function() {
+            const idx = Math.floor(Math.random() * puzzles.length);
+            const puzzle = puzzles[idx];
+
+            currentBoard = parseFEN(puzzle.fen);
+            window.currentPuzzle = puzzle;
+
+            renderBoard(currentBoard);
+
+            document.getElementById('turn-color').textContent = puzzle.turn === 'w' ? '♔' : '♚';
+            document.getElementById('turn-indicator').innerHTML =
+                `<span id="turn-color" style="font-size: 1.25rem;">${puzzle.turn === 'w' ? '♔' : '♚'}</span> ${puzzle.turn === 'w' ? 'White' : 'Black'} to move`;
+
+            document.getElementById('analysis-result').innerHTML = `
+                <div style="font-weight: 600; margin-bottom: 0.5rem;">${puzzle.name}</div>
+                <div style="color: #6b7280; font-size: 0.875rem;">Hint: ${puzzle.hint}</div>
+            `;
+
+            document.getElementById('move-candidates').innerHTML = '<div style="color: #6b7280; font-size: 0.75rem;">Click "Find Best Move" to analyze</div>';
+            clearHeatmaps();
+        };
+
+        // Reset board
+        window.resetBoard = function() {
+            if (window.currentPuzzle) {
+                currentBoard = parseFEN(window.currentPuzzle.fen);
+                renderBoard(currentBoard);
+            }
+            selectedSquare = null;
+            clearHeatmaps();
+        };
+
+        // Clear heatmaps
+        function clearHeatmaps() {
+            const zhCanvas = document.getElementById('canvas-zh');
+            const zlCanvas = document.getElementById('canvas-zl');
+            zhCanvas.getContext('2d').clearRect(0, 0, zhCanvas.width, zhCanvas.height);
+            zlCanvas.getContext('2d').clearRect(0, 0, zlCanvas.width, zlCanvas.height);
+
+            document.getElementById('progress-bar').style.width = '0%';
+            document.getElementById('current-step').textContent = '0';
+            document.getElementById('step-time').textContent = '0ms';
+        }
+
+        // Find best move
+        window.findBestMove = async function() {
+            if (isRunning || !chessTRM) return;
+            isRunning = true;
+
+            document.getElementById('btn-solve').disabled = true;
+
+            const startTime = performance.now();
+            const input = boardToInput(currentBoard);
+
+            try {
+                // Run TRM inference
+                const result = chessTRM.forward(input);
+
+                const endTime = performance.now();
+
+                document.getElementById('progress-bar').style.width = '100%';
+                document.getElementById('current-step').textContent = chessTRM.config.hCycles * chessTRM.config.lCycles;
+                document.getElementById('step-time').textContent = `${Math.round(endTime - startTime)}ms`;
+
+                // Get move predictions
+                const moves = chessTRM.predictMoves(currentBoard);
+
+                // Display analysis
+                displayAnalysis(moves, endTime - startTime);
+
+                // Draw heatmaps
+                const zH = chessTRM.getZH();
+                const zL = chessTRM.getZL();
+                drawChessHeatmap(document.getElementById('canvas-zh'), Array.from(zH));
+                drawChessHeatmap(document.getElementById('canvas-zl'), Array.from(zL));
+
+                // Highlight best move on board
+                if (moves.length > 0) {
+                    const best = moves[0];
+                    renderBoard(currentBoard, [best.from, best.to]);
+
+                    // Mark best move squares
+                    const cells = document.querySelectorAll('.chess-cell');
+                    cells[best.from].classList.add('best-move');
+                    cells[best.to].classList.add('best-move');
+                }
+
+            } catch (e) {
+                console.error('Error finding move:', e);
+                document.getElementById('analysis-result').innerHTML = `
+                    <div style="color: #ef4444;">Error: ${e.message}</div>
+                `;
+            }
+
+            isRunning = false;
+            document.getElementById('btn-solve').disabled = false;
+        };
+
+        // Display analysis
+        function displayAnalysis(moves, time) {
+            const puzzle = window.currentPuzzle;
+            const best = moves[0];
+
+            // Check if correct
+            let isCorrect = false;
+            if (puzzle && puzzle.solution) {
+                isCorrect = (best.from === puzzle.solution.from && best.to === puzzle.solution.to);
+            }
+
+            document.getElementById('analysis-result').innerHTML = `
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                    <span style="font-size: 1.5rem;">${isCorrect ? '✓' : '?'}</span>
+                    <span style="font-weight: 600; color: ${isCorrect ? '#10b981' : '#f59e0b'};">
+                        ${isCorrect ? 'Correct!' : 'Model suggests:'}
+                    </span>
+                </div>
+                <div style="font-family: monospace; font-size: 1.25rem; margin-bottom: 0.5rem;">
+                    ${squareToAlgebraic(best.from)} → ${squareToAlgebraic(best.to)}
+                </div>
+                <div style="color: #6b7280; font-size: 0.75rem;">
+                    Confidence: ${(best.score * 100).toFixed(1)}% | Time: ${Math.round(time)}ms
+                </div>
+            `;
+
+            // Display all candidate moves
+            const candidatesDiv = document.getElementById('move-candidates');
+            candidatesDiv.innerHTML = moves.slice(0, 5).map((m, i) => `
+                <div class="move-item ${i === 0 ? 'best' : ''}" onclick="highlightMove(${m.from}, ${m.to})">
+                    <span style="color: ${i === 0 ? '#10b981' : '#9ca3af'};">${i + 1}.</span>
+                    <span style="font-family: monospace;">${squareToAlgebraic(m.from)} → ${squareToAlgebraic(m.to)}</span>
+                    <span style="color: #6b7280; font-size: 0.75rem; float: right;">${(m.score * 100).toFixed(1)}%</span>
+                </div>
+            `).join('');
+        }
+
+        // Highlight move
+        window.highlightMove = function(from, to) {
+            renderBoard(currentBoard, [from, to]);
+        };
+
+        // Square to algebraic notation
+        function squareToAlgebraic(idx) {
+            const files = 'abcdefgh';
+            const row = 8 - Math.floor(idx / 8);
+            const col = idx % 8;
+            return files[col] + row;
+        }
+
+        // Draw chess heatmap (8x8 grid)
+        function drawChessHeatmap(canvas, data) {
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            const cellSize = width / 8;
+
+            ctx.clearRect(0, 0, width, height);
+
+            // Aggregate activations per square
+            const hiddenSize = Math.floor(data.length / 64);
+            const squareActivations = [];
+
+            for (let i = 0; i < 64; i++) {
+                let sum = 0;
+                for (let j = 0; j < hiddenSize; j++) {
+                    sum += Math.abs(data[i * hiddenSize + j]);
+                }
+                squareActivations.push(sum / hiddenSize);
+            }
+
+            // Normalize
+            const min = Math.min(...squareActivations);
+            const max = Math.max(...squareActivations);
+            const range = max - min || 1;
+
+            for (let i = 0; i < 64; i++) {
+                const row = Math.floor(i / 8);
+                const col = i % 8;
+                const val = (squareActivations[i] - min) / range;
+
+                ctx.fillStyle = getHeatmapColor(val * 255);
+                ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+
+                // Draw grid
+                ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+                ctx.strokeRect(col * cellSize, row * cellSize, cellSize, cellSize);
+            }
+        }
+
+        // Heatmap color
+        function getHeatmapColor(val) {
+            const t = val / 255;
+            let r, g, b;
+            if (t < 0.5) {
+                const t2 = t * 2;
+                r = Math.floor(61 + (245 - 61) * t2);
+                g = Math.floor(28 + (158 - 28) * t2);
+                b = Math.floor(115 + (11 - 115) * t2);
+            } else {
+                const t2 = (t - 0.5) * 2;
+                r = Math.floor(245 + (255 - 245) * t2);
+                g = Math.floor(158 + (255 - 158) * t2);
+                b = Math.floor(11 + (255 - 11) * t2);
+            }
+            return `rgb(${r},${g},${b})`;
+        }
+
+        // Start
+        document.addEventListener('DOMContentLoaded', initialize);
+    </script>
+</body>
+</html>
