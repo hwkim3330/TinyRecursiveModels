@@ -2,7 +2,34 @@
 
 This is the codebase for the paper: "Less is More: Recursive Reasoning with Tiny Networks". TRM is a recursive reasoning approach that achieves amazing scores of 45% on ARC-AGI-1 and 8% on ARC-AGI-2 using a tiny 7M parameters neural network.
 
-[Paper](https://arxiv.org/abs/2510.04871)
+[Paper](https://arxiv.org/abs/2510.04871) | [Live Demo](https://hwkim3330.github.io/TinyRecursiveModels/)
+
+---
+
+## Web Demo (WASM)
+
+Experience TRM running directly in your browser! No installation required.
+
+### [Live Demo](https://hwkim3330.github.io/TinyRecursiveModels/)
+
+<p align="center">
+  <a href="https://hwkim3330.github.io/TinyRecursiveModels/visualize.html">
+    <img src="https://img.shields.io/badge/Try%20Live%20Demo-8b5cf6?style=for-the-badge&logo=webassembly&logoColor=white" alt="Try Live Demo">
+  </a>
+</p>
+
+**Features:**
+- Real TRM model compiled to WebAssembly (69KB)
+- Interactive Sudoku solver with step-by-step visualization
+- Live layer activation heatmaps (z_H, z_L states)
+- Watch recursive reasoning unfold in real-time
+- No GPU required - runs entirely in browser
+
+**Demo Pages:**
+- **[Main Demo](https://hwkim3330.github.io/TinyRecursiveModels/)** - Interactive puzzles (Sudoku, Maze, Pattern)
+- **[WASM Visualizer](https://hwkim3330.github.io/TinyRecursiveModels/visualize.html)** - Real model with neural network visualization
+
+---
 
 ### Motivation
 
@@ -159,6 +186,56 @@ arch.H_cycles=3 arch.L_cycles=4 \
 
 *Runtime:* ~3 days
 
+
+## WASM Implementation
+
+The `wasm-trm/` directory contains a Rust implementation of TRM that compiles to WebAssembly:
+
+```
+wasm-trm/
+├── src/
+│   ├── lib.rs      # Main TRM model with H/L cycles
+│   ├── tensor.rs   # 2D tensor operations (matmul, softmax, etc.)
+│   ├── layers.rs   # SwiGLU, ReasoningBlock, Attention
+│   └── model.rs    # Utility functions
+├── Cargo.toml
+└── pkg/            # Compiled WASM output
+```
+
+### Building WASM
+
+```bash
+cd wasm-trm
+wasm-pack build --target web --release
+```
+
+### Architecture
+
+The WASM implementation includes:
+- **Tensor Operations**: Matrix multiplication, RMS normalization, SiLU activation, softmax
+- **SwiGLU FFN**: Gated linear unit with SiLU activation
+- **ReasoningBlock**: MLP-T variant (transposed MLP) for efficient reasoning
+- **TRM Model**: Full recursive reasoning with configurable H/L cycles
+
+### Configuration
+
+```javascript
+import init, { TRM, TRMConfig } from './wasm/wasm_trm.js';
+
+await init();
+const config = TRMConfig.for_sudoku();  // hidden=128, H=3, L=6
+const model = new TRM(config);
+
+// Run inference
+const output = model.forward(new Uint8Array(puzzle));
+
+// Or step-by-step for visualization
+model.reset();
+const stepInfo = model.step(input);
+console.log(stepInfo.h_step, stepInfo.l_step, stepInfo.confidence);
+```
+
+---
 
 ## Reference
 
