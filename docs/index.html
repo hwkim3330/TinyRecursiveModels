@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TRM - Tiny Recursive Model Demo</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xz/fonts@1/serve/plus-jakarta-sans.min.css">
+    <style>
+        :root {
+            --primary: #8b5cf6;
+            --secondary: #06b6d4;
+            --dark: #0f172a;
+            --darker: #020617;
+        }
+
+        * {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--darker) 0%, var(--dark) 50%, #1e1b4b 100%);
+            min-height: 100vh;
+            color: white;
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Sudoku Grid */
+        .sudoku-grid {
+            display: grid;
+            grid-template-columns: repeat(9, 1fr);
+            gap: 1px;
+            background: rgba(255,255,255,0.2);
+            padding: 2px;
+            border-radius: 8px;
+            max-width: 360px;
+        }
+
+        .sudoku-cell {
+            width: 38px;
+            height: 38px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(15, 23, 42, 0.9);
+            font-size: 1.25rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .sudoku-cell:hover {
+            background: rgba(139, 92, 246, 0.3);
+        }
+
+        .sudoku-cell.given {
+            color: #9ca3af;
+        }
+
+        .sudoku-cell.solved {
+            color: #10b981;
+        }
+
+        .sudoku-cell.processing {
+            animation: pulse 0.5s infinite;
+            background: rgba(139, 92, 246, 0.2);
+        }
+
+        .sudoku-cell:nth-child(3n) {
+            border-right: 2px solid rgba(255,255,255,0.3);
+        }
+
+        .sudoku-cell:nth-child(n+19):nth-child(-n+27),
+        .sudoku-cell:nth-child(n+46):nth-child(-n+54) {
+            border-bottom: 2px solid rgba(255,255,255,0.3);
+        }
+
+        /* Maze Grid */
+        .maze-grid {
+            display: grid;
+            gap: 0;
+            background: #1e293b;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .maze-cell {
+            width: 16px;
+            height: 16px;
+            transition: background 0.1s;
+        }
+
+        .maze-cell.wall { background: #1e293b; }
+        .maze-cell.path { background: #334155; }
+        .maze-cell.start { background: #10b981; }
+        .maze-cell.end { background: #ef4444; }
+        .maze-cell.solution { background: #8b5cf6; }
+        .maze-cell.exploring { background: rgba(139, 92, 246, 0.5); }
+
+        /* Recursion Visualization */
+        .recursion-step {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.75rem;
+            background: rgba(255,255,255,0.03);
+            border-radius: 0.5rem;
+            margin-bottom: 0.5rem;
+            transition: all 0.3s;
+        }
+
+        .recursion-step.active {
+            background: rgba(139, 92, 246, 0.2);
+            border-left: 3px solid var(--primary);
+        }
+
+        .step-number {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: rgba(139, 92, 246, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 9999px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), #7c3aed);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: rgba(255,255,255,0.1);
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.15);
+        }
+
+        .confidence-bar {
+            height: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            transition: width 0.3s;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .tab {
+            padding: 0.5rem 1.5rem;
+            border-radius: 9999px;
+            cursor: pointer;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #9ca3af;
+            transition: all 0.3s;
+        }
+
+        .tab:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .tab.active {
+            background: rgba(139, 92, 246, 0.2);
+            border-color: var(--primary);
+            color: white;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="glass" style="position: fixed; top: 0; left: 0; right: 0; z-index: 100; padding: 1rem 2rem;">
+        <div style="max-width: 1200px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--secondary)); display: flex; align-items: center; justify-content: center; font-weight: 700;">T</div>
+                <span style="font-size: 1.25rem; font-weight: 700;" class="gradient-text">TRM Demo</span>
+            </div>
+            <a href="https://github.com/hwkim3330/TinyRecursiveModels" target="_blank" class="btn btn-primary" style="font-size: 0.875rem;">
+                GitHub
+            </a>
+        </div>
+    </header>
+
+    <!-- Hero -->
+    <section style="padding: 8rem 2rem 3rem; text-align: center;">
+        <h1 style="font-size: 3rem; font-weight: 800; margin-bottom: 1rem;">
+            <span class="gradient-text">Tiny Recursive Model</span>
+        </h1>
+        <p style="color: #9ca3af; max-width: 600px; margin: 0 auto 1.5rem;">
+            7M 파라미터로 ARC-AGI-1에서 45% 달성<br>
+            "Less is More: Recursive Reasoning with Tiny Networks"
+        </p>
+        <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+            <a href="https://arxiv.org/abs/2510.04871" target="_blank" class="btn btn-secondary">Paper</a>
+        </div>
+    </section>
+
+    <!-- Architecture Visualization -->
+    <section style="padding: 2rem; max-width: 800px; margin: 0 auto;">
+        <div class="glass" style="border-radius: 1rem; padding: 2rem; text-align: center;">
+            <h2 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 1rem;">How TRM Works</h2>
+            <div style="background: rgba(0,0,0,0.3); border-radius: 0.75rem; padding: 1.5rem; font-family: monospace; font-size: 0.75rem; text-align: left; color: #9ca3af; overflow-x: auto;">
+<pre>
+  Input x ─────────────────────────────────────────┐
+                                                   │
+  ┌────────────────────────────────────────────────▼────┐
+  │                    RECURSIVE LOOP                   │
+  │  ┌────────────────────────────────────────────────┐ │
+  │  │  for k = 1 to K improvement steps:             │ │
+  │  │    ┌──────────────────────────────────────┐    │ │
+  │  │    │  for n = 1 to N reasoning cycles:    │    │ │
+  │  │    │    z = L_level(z, z_H + x)           │    │ │  ← Update latent
+  │  │    └──────────────────────────────────────┘    │ │
+  │  │    z_H = L_level(z_H, z)                       │ │  ← Update answer
+  │  └────────────────────────────────────────────────┘ │
+  └────────────────────────────────────────────────────┘
+                           │
+                           ▼
+                    Output y = LM_head(z_H)
+</pre>
+            </div>
+            <p style="margin-top: 1rem; font-size: 0.875rem; color: #6b7280;">
+                재귀적으로 답변을 개선하며, 각 단계에서 이전 오류를 수정
+            </p>
+        </div>
+    </section>
+
+    <!-- Demo Section -->
+    <section style="padding: 2rem; max-width: 1000px; margin: 0 auto;">
+        <div class="glass" style="border-radius: 1rem; padding: 2rem;">
+            <h2 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 1.5rem; text-align: center;">Interactive Demo</h2>
+
+            <!-- Tabs -->
+            <div class="tabs" style="justify-content: center;">
+                <button class="tab active" data-tab="sudoku">Sudoku</button>
+                <button class="tab" data-tab="maze">Maze</button>
+                <button class="tab" data-tab="pattern">Pattern</button>
+            </div>
+
+            <!-- Sudoku Demo -->
+            <div id="sudoku" class="tab-content active">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; align-items: start;">
+                    <div>
+                        <h3 style="font-weight: 600; margin-bottom: 1rem;">Sudoku Puzzle</h3>
+                        <div id="sudoku-grid" class="sudoku-grid"></div>
+                        <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+                            <button onclick="solveSudoku()" class="btn btn-primary">Solve with TRM</button>
+                            <button onclick="resetSudoku()" class="btn btn-secondary">Reset</button>
+                            <button onclick="newSudoku()" class="btn btn-secondary">New Puzzle</button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 style="font-weight: 600; margin-bottom: 1rem;">Recursion Steps</h3>
+                        <div id="sudoku-steps" style="max-height: 300px; overflow-y: auto;"></div>
+
+                        <div style="margin-top: 1rem;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                                <span style="font-size: 0.875rem; color: #9ca3af;">Confidence</span>
+                                <span id="sudoku-confidence" style="font-weight: 600;">0%</span>
+                            </div>
+                            <div class="confidence-bar">
+                                <div id="sudoku-confidence-bar" class="confidence-fill" style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 1rem; padding: 1rem; background: rgba(0,0,0,0.2); border-radius: 0.5rem;">
+                            <div style="font-size: 0.75rem; color: #6b7280; margin-bottom: 0.5rem;">Stats</div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.875rem;">
+                                <div>H-cycles: <span id="h-cycles">3</span></div>
+                                <div>L-cycles: <span id="l-cycles">6</span></div>
+                                <div>Steps: <span id="total-steps">0</span></div>
+                                <div>Time: <span id="solve-time">0ms</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Maze Demo -->
+            <div id="maze" class="tab-content">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; align-items: start;">
+                    <div>
+                        <h3 style="font-weight: 600; margin-bottom: 1rem;">Maze Puzzle (15x15)</h3>
+                        <div id="maze-grid" class="maze-grid" style="width: fit-content;"></div>
+                        <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+                            <button onclick="solveMaze()" class="btn btn-primary">Solve with TRM</button>
+                            <button onclick="resetMaze()" class="btn btn-secondary">Reset</button>
+                            <button onclick="newMaze()" class="btn btn-secondary">New Maze</button>
+                        </div>
+                        <div style="margin-top: 1rem; display: flex; gap: 1rem; font-size: 0.75rem;">
+                            <span><span style="display: inline-block; width: 12px; height: 12px; background: #10b981; border-radius: 2px;"></span> Start</span>
+                            <span><span style="display: inline-block; width: 12px; height: 12px; background: #ef4444; border-radius: 2px;"></span> End</span>
+                            <span><span style="display: inline-block; width: 12px; height: 12px; background: #8b5cf6; border-radius: 2px;"></span> Solution</span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 style="font-weight: 600; margin-bottom: 1rem;">Recursion Steps</h3>
+                        <div id="maze-steps" style="max-height: 300px; overflow-y: auto;"></div>
+
+                        <div style="margin-top: 1rem;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                                <span style="font-size: 0.875rem; color: #9ca3af;">Path Found</span>
+                                <span id="maze-confidence" style="font-weight: 600;">-</span>
+                            </div>
+                            <div class="confidence-bar">
+                                <div id="maze-confidence-bar" class="confidence-fill" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pattern Demo -->
+            <div id="pattern" class="tab-content">
+                <div style="text-align: center; padding: 2rem;">
+                    <h3 style="font-weight: 600; margin-bottom: 1rem;">ARC-AGI Style Pattern Recognition</h3>
+                    <div style="display: flex; justify-content: center; gap: 2rem; margin-bottom: 1.5rem;">
+                        <div>
+                            <div style="font-size: 0.75rem; color: #6b7280; margin-bottom: 0.5rem;">Input</div>
+                            <div id="pattern-input" style="display: grid; gap: 2px; background: rgba(255,255,255,0.1); padding: 4px; border-radius: 8px;"></div>
+                        </div>
+                        <div style="display: flex; align-items: center; font-size: 2rem; color: #6b7280;">→</div>
+                        <div>
+                            <div style="font-size: 0.75rem; color: #6b7280; margin-bottom: 0.5rem;">Output</div>
+                            <div id="pattern-output" style="display: grid; gap: 2px; background: rgba(255,255,255,0.1); padding: 4px; border-radius: 8px;"></div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; justify-content: center;">
+                        <button onclick="solvePattern()" class="btn btn-primary">Predict with TRM</button>
+                        <button onclick="newPattern()" class="btn btn-secondary">New Pattern</button>
+                    </div>
+
+                    <div id="pattern-steps" style="max-width: 400px; margin: 1.5rem auto 0;"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Performance Section -->
+    <section style="padding: 2rem; max-width: 800px; margin: 0 auto;">
+        <div class="glass" style="border-radius: 1rem; padding: 2rem;">
+            <h2 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 1.5rem; text-align: center;">Performance</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
+                <div style="text-align: center; padding: 1rem; background: rgba(255,255,255,0.03); border-radius: 0.5rem;">
+                    <div style="font-size: 2rem; font-weight: 700;" class="gradient-text">7M</div>
+                    <div style="font-size: 0.75rem; color: #6b7280;">Parameters</div>
+                </div>
+                <div style="text-align: center; padding: 1rem; background: rgba(255,255,255,0.03); border-radius: 0.5rem;">
+                    <div style="font-size: 2rem; font-weight: 700; color: #10b981;">45%</div>
+                    <div style="font-size: 0.75rem; color: #6b7280;">ARC-AGI-1</div>
+                </div>
+                <div style="text-align: center; padding: 1rem; background: rgba(255,255,255,0.03); border-radius: 0.5rem;">
+                    <div style="font-size: 2rem; font-weight: 700; color: #3b82f6;">87%</div>
+                    <div style="font-size: 0.75rem; color: #6b7280;">Sudoku-Extreme</div>
+                </div>
+                <div style="text-align: center; padding: 1rem; background: rgba(255,255,255,0.03); border-radius: 0.5rem;">
+                    <div style="font-size: 2rem; font-weight: 700; color: #f59e0b;">8%</div>
+                    <div style="font-size: 0.75rem; color: #6b7280;">ARC-AGI-2</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer style="padding: 3rem 2rem; text-align: center; border-top: 1px solid rgba(255,255,255,0.1); margin-top: 2rem;">
+        <p style="color: #6b7280;">
+            <span class="gradient-text" style="font-weight: 600;">TRM</span> - Tiny Recursive Model<br>
+            <span style="font-size: 0.875rem;">"Less is More: Recursive Reasoning with Tiny Networks"</span>
+        </p>
+        <p style="font-size: 0.75rem; color: #4b5563; margin-top: 1rem;">
+            Paper: <a href="https://arxiv.org/abs/2510.04871" style="color: var(--secondary);">arXiv:2510.04871</a>
+        </p>
+    </footer>
+
+    <script src="js/trm.js"></script>
+    <script src="js/sudoku.js"></script>
+    <script src="js/maze.js"></script>
+    <script src="js/pattern.js"></script>
+    <script>
+        // Tab switching
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById(tab.dataset.tab).classList.add('active');
+            });
+        });
+
+        // Initialize demos
+        document.addEventListener('DOMContentLoaded', () => {
+            initSudoku();
+            initMaze();
+            initPattern();
+        });
+    </script>
+</body>
+</html>
