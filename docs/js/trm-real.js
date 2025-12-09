@@ -244,11 +244,14 @@ class TRMConfig {
 }
 
 /**
- * Main TRM Model
+ * Main TRM Model with Continuous Learning
  */
 class TRM {
     constructor(config) {
         this.config = config;
+        this.learningRate = 0.001;
+        this.learningEnabled = false;
+        this.momentum = 0.9;
         console.log(`Initializing TRM: hidden=${config.hiddenSize}, H=${config.hCycles}, L=${config.lCycles}`);
 
         const initStd = 1.0 / Math.sqrt(config.hiddenSize);
@@ -422,6 +425,216 @@ class TRM {
 
     getZL() {
         return this.zL.data;
+    }
+
+    // Enable/disable learning
+    setLearning(enabled, lr = 0.001) {
+        this.learningEnabled = enabled;
+        this.learningRate = lr;
+        console.log(`Learning ${enabled ? 'enabled' : 'disabled'}, lr=${lr}`);
+    }
+
+    // Compute loss for a single position (cross-entropy like)
+    computeLoss(predicted, target) {
+        // Simplified loss: negative log probability
+        const vocabSize = this.config.vocabSize;
+        const hiddenSize = this.config.hiddenSize;
+        let totalLoss = 0;
+        let count = 0;
+
+        for (let i = 0; i < target.length; i++) {
+            if (target[i] > 0) { // Only for known targets
+                // Get logits for this position
+                const logits = new Float32Array(vocabSize);
+                for (let v = 0; v < vocabSize; v++) {
+                    for (let h = 0; h < hiddenSize; h++) {
+                        logits[v] += this.zH.data[i * hiddenSize + h] *
+                                     this.lmHead.data[h * vocabSize + v];
+                    }
+                }
+
+                // Softmax
+                let maxLogit = Math.max(...logits);
+                let sumExp = 0;
+                for (let v = 0; v < vocabSize; v++) {
+                    sumExp += Math.exp(logits[v] - maxLogit);
+                }
+
+                // Cross-entropy loss
+                const targetIdx = target[i];
+                const logProb = logits[targetIdx] - maxLogit - Math.log(sumExp);
+                totalLoss -= logProb;
+                count++;
+            }
+        }
+
+        return count > 0 ? totalLoss / count : 0;
+    }
+
+    // Simple gradient descent update based on Sudoku constraints
+    learnFromConstraints(input, output) {
+        if (!this.learningEnabled) return 0;
+
+        const lr = this.learningRate;
+        const hiddenSize = this.config.hiddenSize;
+        const vocabSize = this.config.vocabSize;
+        let totalUpdate = 0;
+
+        // For each position, push embeddings toward correct values
+        for (let i = 0; i < 81; i++) {
+            const predicted = output[i];
+            const given = input[i];
+
+            // Skip if given (already correct)
+            if (given > 0) continue;
+
+            // Check Sudoku constraints for this position
+            const row = Math.floor(i / 9);
+            const col = i % 9;
+            const box = Math.floor(row / 3) * 3 + Math.floor(col / 3);
+
+            // Collect used numbers in row, col, box
+            const used = new Set();
+            for (let j = 0; j < 9; j++) {
+                // Row
+                const rowVal = output[row * 9 + j];
+                if (rowVal > 0 && rowVal <= 9) used.add(rowVal);
+                // Col
+                const colVal = output[j * 9 + col];
+                if (colVal > 0 && colVal <= 9) used.add(colVal);
+            }
+            // Box
+            const boxRow = Math.floor(row / 3) * 3;
+            const boxCol = Math.floor(col / 3) * 3;
+            for (let r = 0; r < 3; r++) {
+                for (let c = 0; c < 3; c++) {
+                    const boxVal = output[(boxRow + r) * 9 + (boxCol + c)];
+                    if (boxVal > 0 && boxVal <= 9) used.add(boxVal);
+                }
+            }
+
+            // Find valid candidates
+            const candidates = [];
+            for (let v = 1; v <= 9; v++) {
+                if (!used.has(v)) candidates.push(v);
+            }
+
+            // If current prediction is invalid, adjust embeddings
+            if (predicted < 1 || predicted > 9 || used.has(predicted)) {
+                if (candidates.length > 0) {
+                    // Push toward a valid candidate
+                    const target = candidates[Math.floor(Math.random() * candidates.length)];
+
+                    // Update token embedding for target
+                    for (let h = 0; h < hiddenSize; h++) {
+                        const delta = (this.embedTokens.data[target * hiddenSize + h] -
+                                      this.zH.data[i * hiddenSize + h]) * lr;
+                        this.zH.data[i * hiddenSize + h] += delta;
+                        totalUpdate += Math.abs(delta);
+                    }
+                }
+            }
+        }
+
+        return totalUpdate;
+    }
+
+    // Train on current puzzle with self-supervision
+    trainStep(input) {
+        if (!this.learningEnabled) return { loss: 0, updates: 0 };
+
+        // Forward pass
+        const output = this.forward(input);
+
+        // Compute constraint-based loss
+        const loss = this.computeConstraintLoss(input, output);
+
+        // Learn from constraints
+        const updates = this.learnFromConstraints(input, output);
+
+        // Also slightly adjust LM head based on confident predictions
+        this.adjustLMHead(input, output);
+
+        return { loss, updates, output };
+    }
+
+    // Compute constraint violation loss
+    computeConstraintLoss(input, output) {
+        let violations = 0;
+
+        // Check rows
+        for (let r = 0; r < 9; r++) {
+            const seen = new Set();
+            for (let c = 0; c < 9; c++) {
+                const v = output[r * 9 + c];
+                if (v > 0 && v <= 9) {
+                    if (seen.has(v)) violations++;
+                    seen.add(v);
+                }
+            }
+        }
+
+        // Check columns
+        for (let c = 0; c < 9; c++) {
+            const seen = new Set();
+            for (let r = 0; r < 9; r++) {
+                const v = output[r * 9 + c];
+                if (v > 0 && v <= 9) {
+                    if (seen.has(v)) violations++;
+                    seen.add(v);
+                }
+            }
+        }
+
+        // Check boxes
+        for (let br = 0; br < 3; br++) {
+            for (let bc = 0; bc < 3; bc++) {
+                const seen = new Set();
+                for (let r = 0; r < 3; r++) {
+                    for (let c = 0; c < 3; c++) {
+                        const v = output[(br * 3 + r) * 9 + (bc * 3 + c)];
+                        if (v > 0 && v <= 9) {
+                            if (seen.has(v)) violations++;
+                            seen.add(v);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Count empty cells
+        const empty = output.filter(v => v < 1 || v > 9).length;
+
+        return violations + empty * 0.5;
+    }
+
+    // Adjust LM head weights slightly
+    adjustLMHead(input, output) {
+        const lr = this.learningRate * 0.1;
+        const hiddenSize = this.config.hiddenSize;
+        const vocabSize = this.config.vocabSize;
+
+        for (let i = 0; i < 81; i++) {
+            const given = input[i];
+            if (given > 0) {
+                // Strengthen connection for given values
+                for (let h = 0; h < hiddenSize; h++) {
+                    const idx = h * vocabSize + given;
+                    this.lmHead.data[idx] += this.zH.data[i * hiddenSize + h] * lr * 0.01;
+                }
+            }
+        }
+    }
+
+    // Run multiple training iterations
+    train(input, iterations = 10, callback = null) {
+        const results = [];
+        for (let i = 0; i < iterations; i++) {
+            const result = this.trainStep(input);
+            results.push(result);
+            if (callback) callback(i, result);
+        }
+        return results;
     }
 }
 

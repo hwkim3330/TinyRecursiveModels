@@ -272,6 +272,43 @@
                     <button onclick="newPuzzle()" class="btn btn-secondary">New</button>
                 </div>
 
+                <!-- Continuous Learning Section -->
+                <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <h3 style="font-size: 0.875rem; color: #9ca3af; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="color: #f59e0b;">⚡</span> Continuous Learning
+                    </h3>
+
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+                        <label style="font-size: 0.75rem; color: #6b7280;">Learning Rate:</label>
+                        <input type="range" id="lr-slider" min="0.0001" max="0.01" step="0.0001" value="0.001"
+                               style="flex: 1; accent-color: var(--primary);"
+                               onchange="updateLearningRate(this.value)">
+                        <span id="lr-value" style="font-size: 0.75rem; color: #9ca3af; min-width: 50px;">0.001</span>
+                    </div>
+
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <button id="btn-train" onclick="runTraining()" class="btn btn-secondary" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+                            Train (10 iter)
+                        </button>
+                        <button id="btn-train-50" onclick="runTraining(50)" class="btn btn-secondary">
+                            Train 50
+                        </button>
+                    </div>
+
+                    <div style="margin-top: 0.75rem;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 0.25rem;">
+                            <span>Loss (violations + empty)</span>
+                            <span id="loss-val">-</span>
+                        </div>
+                        <div style="height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden;">
+                            <div id="loss-bar" style="height: 100%; width: 0%; background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444); transition: width 0.3s;"></div>
+                        </div>
+                    </div>
+
+                    <div id="training-log" style="margin-top: 0.75rem; max-height: 100px; overflow-y: auto; font-size: 0.65rem; color: #6b7280; background: rgba(0,0,0,0.2); border-radius: 0.25rem; padding: 0.5rem; display: none;">
+                    </div>
+                </div>
+
                 <div style="margin-top: 1.5rem;">
                     <h3 style="font-size: 0.875rem; color: #9ca3af; margin-bottom: 0.5rem;">Model Config</h3>
                     <div class="cycle-info">
@@ -869,6 +906,91 @@ for h in H_cycles:           # Update answer K times
             }
 
             isRunning = false;
+            document.getElementById('btn-solve').disabled = false;
+            document.getElementById('btn-step').disabled = false;
+        };
+
+        // Update learning rate
+        window.updateLearningRate = function(value) {
+            const lr = parseFloat(value);
+            document.getElementById('lr-value').textContent = lr.toFixed(4);
+            if (trm) {
+                trm.setLearning(true, lr);
+            }
+        };
+
+        // Run training
+        window.runTraining = async function(iterations = 10) {
+            if (isRunning || !trm) return;
+            isRunning = true;
+
+            document.getElementById('btn-train').disabled = true;
+            document.getElementById('btn-train-50').disabled = true;
+            document.getElementById('btn-solve').disabled = true;
+            document.getElementById('btn-step').disabled = true;
+
+            const lr = parseFloat(document.getElementById('lr-slider').value);
+            trm.setLearning(true, lr);
+
+            const logDiv = document.getElementById('training-log');
+            logDiv.style.display = 'block';
+            logDiv.innerHTML = `<div style="color: #f59e0b;">Training ${iterations} iterations (lr=${lr.toFixed(4)})...</div>`;
+
+            const input = new Uint8Array(currentPuzzle);
+            let bestLoss = Infinity;
+            let bestOutput = null;
+
+            for (let i = 0; i < iterations; i++) {
+                const result = trm.trainStep(input);
+
+                // Update UI
+                const lossPercent = Math.min(100, (result.loss / 100) * 100);
+                document.getElementById('loss-bar').style.width = `${100 - lossPercent}%`;
+                document.getElementById('loss-val').textContent = result.loss.toFixed(1);
+
+                // Track best result
+                if (result.loss < bestLoss) {
+                    bestLoss = result.loss;
+                    bestOutput = Array.from(result.output);
+                }
+
+                // Log progress
+                const logEntry = document.createElement('div');
+                logEntry.textContent = `Iter ${i + 1}: loss=${result.loss.toFixed(1)}, updates=${result.updates.toFixed(2)}`;
+                logEntry.style.color = result.loss < 50 ? '#10b981' : (result.loss < 100 ? '#f59e0b' : '#ef4444');
+                logDiv.appendChild(logEntry);
+                logDiv.scrollTop = logDiv.scrollHeight;
+
+                // Update grid visualization
+                renderGrid(originalPuzzle, Array.from(result.output));
+
+                // Update heatmaps
+                const zH = trm.getZH();
+                const zL = trm.getZL();
+                drawHeatmap(document.getElementById('canvas-zh'), Array.from(zH), 81, 128);
+                drawHeatmap(document.getElementById('canvas-zl'), Array.from(zL), 81, 128);
+
+                // Small delay for UI update
+                if (i % 5 === 0) {
+                    await new Promise(r => setTimeout(r, 10));
+                }
+            }
+
+            // Final log
+            const finalLog = document.createElement('div');
+            finalLog.style.cssText = 'color: #10b981; font-weight: bold; margin-top: 0.5rem;';
+            finalLog.textContent = `Done! Best loss: ${bestLoss.toFixed(1)}`;
+            logDiv.appendChild(finalLog);
+
+            // Show best result
+            if (bestOutput) {
+                renderGrid(originalPuzzle, bestOutput);
+            }
+
+            trm.setLearning(false);
+            isRunning = false;
+            document.getElementById('btn-train').disabled = false;
+            document.getElementById('btn-train-50').disabled = false;
             document.getElementById('btn-solve').disabled = false;
             document.getElementById('btn-step').disabled = false;
         };
